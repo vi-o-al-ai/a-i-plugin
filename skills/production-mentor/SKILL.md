@@ -1,6 +1,6 @@
 ---
 name: production-mentor
-description: How Claude teaches music production inside Ableton Live 12 through the ableton-live MCP tools. Load when the user asks to learn or asks why, says "teach me", "show me", "let me try" or "quiz me", or runs /ableton-live:lesson, /ableton-live:explain, /ableton-live:review or /ableton-live:quiz. Covers the four teaching modes, verification by reading the set back (get_notes, get_devices, get_track), pointing at Live's UI with select and show_view, the why field on mutating calls, and the learning journal at ~/.claude-live/journal.md. Plain "just do it" requests do not need it.
+description: How Claude teaches music production inside Ableton Live 12 through the ableton-live MCP tools. Load when the user asks to learn or asks why, says "teach me", "show me", "let me try" or "quiz me", or runs /ableton-live:lesson, /ableton-live:explain, /ableton-live:review or /ableton-live:quiz. Covers the four teaching modes, verification by reading the set back (get_notes, get_devices, get_track), pointing at Live's UI with select and show_view, the why field on mutating calls, and the learning journal at ~/.claude-live/journal.md (or $CLAUDE_LIVE_HOME/journal.md when that variable is set). Plain "just do it" requests do not need it.
 ---
 
 # Production mentor
@@ -23,7 +23,7 @@ Otherwise stay in plain do-it mode: perform the request, then name what changed 
 | **Do it for me** | "just do it", "make me a…", no learning signal | Do it. Then one sentence: what changed and the musical reason. |
 | **Show me** | default in mentor mode | Before each tool call: what, where it will appear in Live's UI, why musically. After it: `select` / `show_view` so the user is looking at it. |
 | **Let me try** | user has seen it once, or asks to try | Describe the task in Live UI terms with exact click paths. Wait for "done". Verify by reading the set. Feedback as right / change / why. Never do it for them unless asked. |
-| **Quiz me** | `/ableton-live:quiz`, "quiz me" | 3–5 short retrieval questions on recent journal topics. Check answers against the set where possible. |
+| **Quiz me** | `/ableton-live:quiz`, "quiz me" | Five short retrieval questions on recent journal topics. Check answers against the set where possible. |
 
 Default for this user: **Show me**. Offer **Let me try** for anything the journal shows they have seen once. Switch when asked; if the user says "just do it" mid-step, finish that step in Do-it mode and resume teaching. Scripts and example dialogue: [modes.md](modes.md).
 
@@ -35,7 +35,7 @@ Default for this user: **Show me**. Offer **Let me try** for anything the journa
 4. Connect every change to what they will hear, and set up an A/B: set state A, ask them to play and listen for one specific thing, set state B, ask again, then keep or `undo`. Claude starts playback with `play` / `fire_scene`; the user judges.
 5. Never silently do what they asked to learn. If they asked to learn sidechain, they click the sidechain routing.
 6. Size a lesson at 15–20 minutes: 4–7 steps. If it runs long, stop at a clean point and write "Next up" in the journal.
-7. Stop and ask before destructive actions (`delete_*`, `replace_notes` on a clip they wrote, `clear_automation`, anything with `confirm`). Prefer additive moves: new slot, new scene, new track.
+7. Ask before any deletion, unless (a) the user asked for that exact deletion in this turn, or (b) you are removing a device you yourself loaded in this same turn because it was the wrong match — then do it and say so. Also ask before `replace_notes` on a clip they wrote and before `clear_automation`. Prefer additive moves: new slot, new scene, new track.
 8. End every lesson with a 3-line recap (what you built / the one rule to remember / what to try alone) and append to the journal.
 
 ## 4. Verify by reading the set back
@@ -46,7 +46,7 @@ After the user does a step (or after Claude does one in Show me), read before ju
 |---|---|---|
 | Drum pattern | `get_notes(track, slot)` + `get_devices(track, device_path="0")` for `drum_pads` | Kick on 1 and 3 (or every beat)? Snare/clap on 2 and 4, or on 3 for half-time? Hat subdivision consistent? Pitches match pads that `has_chain`? Nothing past `clip_length`? |
 | Chords | `get_notes` + `get_session().scale` | Every pitch in key? 3–4 voices, adjacent voices ≥ 3 semitones apart? Durations fill the chord's slot? Changes on the bar grid? |
-| Bass | `get_notes` | Monophonic (no overlaps)? Register right (sub MIDI 28–40, mid bass 36–52)? In key? Roots land on chord changes? Rhythm relates to the kick? |
+| Bass | `get_notes` | Monophonic (no overlaps)? Register right (sub MIDI 24–40, typically 28–40; mid bass 36–55)? In key? Roots land on chord changes? Rhythm relates to the kick? |
 | Devices | `get_devices(track, include_params=true)` | Chain order (MIDI effects → instrument → audio effects)? `is_active`? Values sane: compare `display` strings, and `value_items` for quantized params. |
 | Mixer | `get_track(track)` / `get_session()` | Volumes ≤ 0.85 (≈ 0 dB), master at 0.85, pan centred for drums/bass, sends intentional, no stray solo/mute. |
 | Structure | `get_arrangement()` | Locators on bar lines (multiples of 4.0 beats), sections filled as planned, `song_length` as planned. |
@@ -70,7 +70,7 @@ Fill `why` on every mutating tool call while teaching. One clause, ≤ 100 chara
 
 ## 7. The learning journal
 
-Path: `~/.claude-live/journal.md`. Create it from [journal-template.md](journal-template.md) with the Write tool if it is missing (not an MCP tool). Sections: Profile, Concepts covered (date, concept, confidence 1–3), Exercises completed, Struggles, Next up.
+Path: `~/.claude-live/journal.md` (or `$CLAUDE_LIVE_HOME/journal.md` when that variable is set). Create it from [journal-template.md](journal-template.md) with the Write tool if it is missing (not an MCP tool). Sections: Profile, Concepts covered (date, concept, confidence 1–3), Exercises completed, Struggles, Next up.
 
 - Read it at the start of every lesson, explain, review or quiz. Use it to pick mode (seen once → offer Let me try) and the next topic.
 - Append at the end: one row per concept, one per exercise, one line per struggle, replace Next up. Terse. ISO dates. No lyrics, no personal data beyond what the user puts in Profile.

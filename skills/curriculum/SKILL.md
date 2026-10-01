@@ -9,8 +9,8 @@ Spine: **Loop to song**. Every topic ends with something that plays, and the seq
 
 ## Running `/ableton-live:lesson [topic]`
 
-1. **Read the journal** at `~/.claude-live/journal.md` (create from `production-mentor/journal-template.md` if missing). Note confidence levels, Struggles, Next up.
-2. **Check Live**: `ableton_status`. If not connected, walk through Preferences → Link, Tempo & MIDI → Control Surface: ClaudeLive (see `production-mentor/ui-vocabulary.md`) before anything else.
+1. **Read the journal** at `~/.claude-live/journal.md` (or `$CLAUDE_LIVE_HOME/journal.md` when that variable is set) (create from `production-mentor/journal-template.md` if missing). Note confidence levels, Struggles, Next up.
+2. **Check Live**: `ableton_status`. If not connected, walk through Settings → Link, Tempo & MIDI → Control Surface: ClaudeLive (Preferences in older Live versions; see `production-mentor/ui-vocabulary.md`) before anything else.
 3. **Pick the topic**: the one requested, else the journal's Next up, else the first topic in the tree whose prerequisites are at confidence ≥ 2. If the user names something off-tree ("teach me arps"), map it to the nearest topic and say which.
 4. **Read the topic file** under `topics/`. Read `get_session()` so the plan uses the user's real tracks and scenes rather than assuming an empty set.
 5. **State the goal and the plan**: one sentence of goal, the 15–20 minute plan as 4–7 numbered steps, which steps are Show me and which are Let me try (offer Let me try for anything seen once). Ask one question only if the plan depends on it (genre, which track to use).
@@ -29,7 +29,7 @@ Rules: one lesson = one topic file; if time runs out, stop at a clean step and w
 | 01 | Tempo, grid and clips | BPM, bars as beats (1 bar = 4.0), grid, clip length and loop brace, duplicating clips and scenes, launch quantization. | [topics/01-tempo-grid-and-clips.md](topics/01-tempo-grid-and-clips.md) |
 | 02 | Drums: four-on-the-floor | Kick every beat, clap on 2 and 4, offbeat hats, a bar-4 variation; 120 BPM synth-pop/disco feel. | [topics/02-drums-four-on-the-floor.md](topics/02-drums-four-on-the-floor.md) |
 | 03 | Drums: half-time at 140 | Kick on 1, snare on 3, sparse kicks, triplet hats and rolls; riddim/dubstep feel. | [topics/03-drums-half-time-140.md](topics/03-drums-half-time-140.md) |
-| 04 | Bass fundamentals | Sub vs mid bass, mono, register (MIDI 28–40 sub, 36–52 mid), locking to the kick, in key. | [topics/04-bass-fundamentals.md](topics/04-bass-fundamentals.md) |
+| 04 | Bass fundamentals | Sub vs mid bass, mono, register (MIDI 24–40 sub, typically 28–40; 36–55 mid), locking to the kick, in key. | [topics/04-bass-fundamentals.md](topics/04-bass-fundamentals.md) |
 | 05 | Chords and keys | `set_scale`; major pop progressions (I–V–vi–IV family) and minor dubstep keys (i–VI–III–VII, i–VI); voicings and harmonic rhythm. | [topics/05-chords-and-keys.md](topics/05-chords-and-keys.md) |
 | 06 | Pads and leads | Sound design basics on Drift / Wavetable / Analog: oscillator, filter, envelope, LFO; a lush pad, a bright lead, an arpeggio. | [topics/06-pads-and-leads.md](topics/06-pads-and-leads.md) |
 | 07 | Wobble and growl bass | LFO → filter (Auto Filter first, then Wavetable position / Operator FM), Saturator or Roar, OTT, a separate clean sub, the resampling idea. | [topics/07-wobble-and-growl-bass.md](topics/07-wobble-and-growl-bass.md) |

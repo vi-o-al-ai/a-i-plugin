@@ -1,6 +1,6 @@
 ---
 name: midi-writing
-description: Recipes for writing musically correct MIDI into Ableton Live clips with add_notes: drum grids (four-on-the-floor, disco, half-time 140 dubstep/riddim, triplet hats, fills), chord progressions and pad voicings, synth-pop and riddim bass, arpeggios and hooks, section-by-section arrangement patterns and humanization. Load when the user asks Claude to write, generate, program or improve drums, beats, chords, pads, bass, sub, leads, melodies, arps or a song skeleton, or asks what notes/rhythm to use for an Empire of the Sun-style synth-pop or Subtronics-style riddim/dubstep track.
+description: "Recipes for writing musically correct MIDI into Ableton Live clips with add_notes: drum grids (four-on-the-floor, disco, half-time 140 dubstep/riddim, triplet hats, fills), chord progressions and pad voicings, synth-pop and riddim bass, arpeggios and hooks, section-by-section arrangement patterns and humanization. Load when the user asks Claude to write, generate, program or improve drums, beats, chords, pads, bass, sub, leads, melodies, arps or a song skeleton, or asks what notes/rhythm to use for an Empire of the Sun-style synth-pop or Subtronics-style riddim/dubstep track."
 ---
 
 # MIDI writing
@@ -90,7 +90,7 @@ before touching the device.
 **Riddim / dubstep (140 BPM, F minor)**
 1. Drums: half-time, kick 0.0, snare 2.0, hats on 1.0 and 3.0; triplet hat bounce in bar 2 ([drums.md § Half-time](drums.md)).
 2. Bass: call-and-response, 8th-triplet rhythms with rests, mid bass 41–53 ([bass.md](bass.md)).
-3. Sub: same rhythm one or two octaves down (29–36), one note at a time, no overlaps.
+3. Sub: same rhythm one or two octaves down (24–40, typically 28–40), one note at a time, no overlaps.
 4. Chords/pad only in intro/break; drop is drums + bass + sub + one-shot FX.
 5. Arrangement: intro 16 → build 16 → drop 32 → break 16 → build 8 → drop 32 ([arrangement-patterns.md](arrangement-patterns.md)).
 

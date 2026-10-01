@@ -119,11 +119,11 @@ Automate Global Mod Amount or LFO 1 S. Rate per bar (1/4 → 1/8 → 1/16) for t
 After: Roar or Saturator → OTT (Multiband Dynamics) → Utility Bass Mono
 ```
 Why: the LFO sweeps the table and the filter together, so tone *and* brightness pulse on the beat;
-retrigger makes each MIDI note restart the wobble so the rhythm in `bass.md` stays legible.
+retrigger makes each MIDI note restart the wobble so the rhythm in `midi-writing/bass.md` stays legible.
 
 ### Clean sub
 ```
-Osc 1 Off; Osc 2 Off; Sub Gain 0 dB, Sub Tone 0, Sub Transpose 0 (write notes at 24–36)
+Osc 1 Off; Osc 2 Off; Sub Gain 0 dB, Sub Tone 0, Sub Transpose 0 (write notes at 24–40, typically 28–40)
 Mono On; Glide 30 ms; Filter 1 Off
 Amp Attack 3 ms, Decay 0, Sustain 100 %, Release 120 ms
 ```

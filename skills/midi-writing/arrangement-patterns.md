@@ -11,7 +11,7 @@ Bar *N* in Live's ruler starts at song time `(N-1) × 4.0` beats (4/4). Seconds 
 | 33 | 128.0 | 1:04 | 0:55 |
 | 49 | 192.0 | 1:36 | 1:22 |
 | 65 | 256.0 | 2:08 | 1:50 |
-| 97 | 384.0 | 3:12 | 2:44 |
+| 97 | 384.0 | 3:12 | 2:45 |
 | 129 | 512.0 | 4:16 | 3:39 |
 
 ## Synth-pop (Empire of the Sun lane), 118–124 BPM
@@ -29,7 +29,7 @@ Bar *N* in Live's ruler starts at song time `(N-1) × 4.0` beats (4/4). Seconds 
 | Final chorus | 16–24 | Chorus 2 plus every layer; the last 8 bars drop the bass octave jumps to straight 8ths for weight. |
 | Outro | 8 | Pad + arp fade; remove kick first, then bass. |
 
-Total ≈ 128–136 bars ≈ 4:15–4:30 at 120. Radio edit: cut Verse 2 to 8 and the final chorus to 16.
+Total ≈ 120–128 bars ≈ 4:00–4:16 at 120 (bars × 4 beats × 0.5 s). Radio edit: cut Verse 2 to 8 and the final chorus to 16.
 
 ## Riddim / dubstep (Subtronics lane), 140 BPM
 
@@ -44,7 +44,7 @@ Total ≈ 128–136 bars ≈ 4:15–4:30 at 120. Radio edit: cut Verse 2 to 8 an
 | Drop C / D | 32 | New bass pattern or the drop transposed (+2 or +5 semitones via `transpose_notes` on bass and sub together), ride/triplet hats, extra percussion. |
 | Outro | 16 | Pad + hats; kick last to leave. |
 
-Total ≈ 150–170 bars ≈ 4:20–4:50.
+Total ≈ 136–160 bars ≈ 3:53–4:34 at 140 (bars × 4 beats × 0.4286 s).
 
 ## What changes between sections, in MIDI terms
 

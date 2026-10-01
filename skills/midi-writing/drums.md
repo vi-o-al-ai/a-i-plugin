@@ -164,7 +164,7 @@ Crash: put 49 at `0.0` of the bar *after* the fill (the first beat of the next 4
 4. Bar 4 (12.0–16.0): the fill. `remove_notes(from_time=15.0, time_span=1.0, from_pitch=42, pitch_span=5)`
    to clear hats under the fill, then `add_notes` one of the fills above with `start + 12.0`.
    House: swap the bar-4 open hat for an 8th-note open-hat pair at `15.0` and `15.5`.
-5. `get_notes` → count should be `4 × (bar count) − removed + added`. `fire_clip` and listen to the turnaround.
+5. `get_notes` → count should be `4 × (bar count) − removed + added`. `fire_clip` and ask the user to listen to the turnaround.
 6. For 8 bars: `duplicate_clip_loop` once more and put the bigger fill at bar 8 (28.0–32.0); keep bar 4's fill smaller (2 notes).
 
 ## Teaching lines

@@ -51,7 +51,7 @@ Show the user the script's output. If it fails, read the error and act on it (fo
 
 Ask the user to:
 1. **Restart Ableton Live** (or start it) so it discovers the new Remote Script.
-2. Open **Preferences → Link, Tempo & MIDI**.
+2. Open **Settings → Link, Tempo & MIDI** (Preferences in older Live versions).
 3. In a free **Control Surface** slot choose **ClaudeLive**. Leave **Input** and **Output** set to **None**.
 4. Open or create any Live Set.
 

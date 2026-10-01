@@ -36,7 +36,7 @@ choose **Drums** → **Kick** (Post FX)". Then you set everything else.
 
 Beat length = `60000 / BPM` ms. 120 BPM: 500 ms; 124: 484 ms; 140: 429 ms.
 Pump release ≈ 1/3–1/2 of the kick spacing so the signal is back just before the next kick.
-Four-on-the-floor at 120 → 150–250 ms. Dubstep kicks are 1–2 beats apart → short release (80–120 ms)
+Four-on-the-floor at 120 → 150–250 ms. In half-time dubstep the main kick is 4 beats (1.7 s) apart and extra kicks are rare → short release (80–120 ms)
 and a *dip*, not a pump; the groove there comes from the bass rhythm, not the ducking.
 
 ## Recipes

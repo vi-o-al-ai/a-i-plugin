@@ -16,7 +16,7 @@ Prefixes: `Osc-A …`, `A …`, `Ae …` (A's envelope); same for B, C, D.
 | `Osc-A Wave` | Waveform (Sine, Saw, Square, Triangle, noise variants; read `value_items`) | Sine |
 | `A Coarse` | Frequency ratio vs. the note (1 = fundamental, 2 = octave, 3 = 12th…) | Carrier 1; modulator 1 (gritty) or 2 (hollow) |
 | `A Fine` | Fine ratio (0–1000) — tiny values add beating | 0 |
-| `A Fix On ` | Fixed frequency instead of key-tracked (**note the trailing space in the LOM name**) | Off |
+| `A Fix On` | Fixed frequency instead of key-tracked (some builds spell this LOM name with a trailing space — match the read list exactly; verify by read-back) | Off |
 | `A Fix Freq`, `A Fix Freq Mul` | Fixed frequency and multiplier | — |
 | `Osc-A Level` | Output (carrier) or modulation depth (modulator) | Carrier 0 dB; modulator −20 to −6 dB |
 | `Osc-A Lev < Vel`, `Osc-A Lev < Key` | Velocity/key scaling of level | modulator Lev<Vel +30 % for expressive growl |
@@ -62,7 +62,7 @@ parameter appears, ask the user to set Voices = 1 for mono bass (verify in Live)
 Algorithm: any; Osc-A On, Osc-A Wave Sine, A Coarse 1, Osc-A Level 0 dB; Osc-B/C/D Off
 Ae Attack 2 ms, Ae Decay 0, Ae Sustain 100 %, Ae Release 150 ms
 Filter On Off; Glide On On, Glide Time 40 ms; Spread 0; Voices 1 (by hand if not a parameter)
-Notes: root only, 24–36 (see midi-writing/bass.md)
+Notes: root only, 24–40, typically 28–40 (see `midi-writing/bass.md`)
 ```
 Why: one sine at the root is the whole job; glide ties repeated notes without clicks.
 
@@ -84,7 +84,7 @@ that is the vowel-like "growl". Triplet sync matches riddim hats.
 ### FM bell / pluck (synth-pop top layer)
 ```
 Algorithm: B → A
-Osc-A Sine, Coarse 1; Osc-B Sine, B Coarse 3.5 (or 7 for glassier), Osc-B Level −10 dB
+Osc-A Sine, A Coarse 1; Osc-B Sine, B Coarse 3 + B Fine 500 (a 3.5 ratio; or B Coarse 7 for glassier), Osc-B Level −10 dB
 Be Attack 0, Be Decay 1.2 s, Be Sustain 0            ← harmonics fade before the note does
 Ae Attack 0, Ae Decay 2 s, Ae Sustain 0, Ae Release 600 ms
 Spread 30 %; Tone 60 %
@@ -103,6 +103,6 @@ After: Chorus-Ensemble, light Compressor
 ```
 
 ## Verify
-Confirm `A Fix On ` (with space), `Osc-B Level`, `Be Decay`, `LFO Sync`, `Shaper Drive` in the read
+Confirm `A Fix On` (with or without a trailing space), `Osc-B Level`, `Be Decay`, `LFO Sync`, `Shaper Drive` in the read
 list; if `Algorithm` display names look different, pick by `value_items` index and describe the
 shape to the user.

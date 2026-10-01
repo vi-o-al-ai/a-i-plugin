@@ -2,7 +2,7 @@
 
 **Goal.** The user can name every main area of Live 12, knows where a sound goes from a MIDI note to the speakers, and has made one clip play on one track with one effect.
 
-**Prerequisites.** Live 12 open with a set (empty is fine); `ableton_status` returns `connected: true`. If not, fix Preferences → Link, Tempo & MIDI → Control Surface: ClaudeLive first (see `production-mentor/ui-vocabulary.md`).
+**Prerequisites.** Live 12 open with a set (empty is fine); `ableton_status` returns `connected: true`. If not, fix Settings → Link, Tempo & MIDI → Control Surface: ClaudeLive (Preferences in older Live versions) first (see `production-mentor/ui-vocabulary.md`).
 
 **Terms introduced (define once).** Session View, Arrangement View, Detail View (Clip View / Device View), clip slot, scene, return track, master, Browser, signal flow.
 

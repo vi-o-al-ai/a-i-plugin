@@ -1,7 +1,7 @@
 # Bass
 
 Bass locks to the kick and names the chord. Keep it mono (one note at a time) unless you mean a
-pad-bass. Registers: sub 24–36 (C0–C1, ~33–65 Hz), synth/mid bass 36–55. Pitch tables in [chords.md](chords.md).
+pad-bass. Registers: sub bass 24–40 (C0–E1 in Live's labelling, ~33–82 Hz), typically 28–40; mid bass 36–55. Pitch tables in [chords.md](chords.md).
 
 ## Synth-pop octave bass (120 BPM, 8ths)
 
@@ -91,7 +91,7 @@ the LFO retriggered per note or a shorter rate (see `live-devices/instruments/wa
 
 1. **One note at a time.** No overlaps: each `start + duration ≤ next start`. Leave ≥ 0.05 gap or use a mono/legato instrument.
 2. **Root only** (the chord's root, occasionally the 5th). The sub tells the ear which chord it is; a 3rd down there is mud.
-3. **One octave band.** Choose, per pitch class, the octave that lands in ~29–40 (F0–E1 ≈ 44–82 Hz) so the sub stays even.
+3. **One octave band.** Choose, per pitch class, the octave that lands in 24–40, typically 28–40 (E0–E1 ≈ 41–82 Hz), so the sub stays even.
    F minor: F0 29 · Ab0 32 · Bb0 34 · C1 36 · Eb0 27 (38.9 Hz — use Eb1 39 if the system cannot reproduce it).
 4. **No faster than 8ths.** A 16th at 140 BPM is 107 ms — the sub barely completes four cycles. Let the mid bass do the triplets; the sub plays the skeleton.
 5. **Constant velocity** 100–110. No humanization, dead on the grid.

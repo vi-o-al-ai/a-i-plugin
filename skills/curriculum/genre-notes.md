@@ -21,7 +21,7 @@ Conventions, not rules. Use these for defaults when a lesson or study needs a st
 |---|---|
 | Tempo | 140 BPM, 4/4, felt as half-time (70 BPM pulse). Some tracks sit at 145–150; 140 is the default. |
 | Drums | Kick on beat 1, snare on beat 3 (the half-time backbeat), very sparse extra kicks (the "and" of 2 or 4 once per two bars), snare usually layered (acoustic crack + clap + short noise), hats on 8ths or triplets, often quiet; percussion fills and snare rolls (16ths or triplets, rising velocity) at the end of 8- and 16-bar phrases. Drums are loud, short and dry; the snare is the loudest element after the sub. |
-| Bass | Two layers: a clean sine sub (MIDI 28–40, mono, no effects, carries the fundamental) and the "mid" or "growl" bass (MIDI 40–55, high-passed around 80–100 Hz) that carries character. Riddim rhythms are repetitive, bouncy, triplet-heavy (eighth-note triplets, quarter-note triplets, dotted patterns), often two-bar phrases with the second bar as a response (different sound or pitch). Pitches move little: root, minor third, fifth, flat seventh; the groove and sound changes carry interest. Wobbles: tempo-synced LFO on a filter cutoff at 1/4, 1/8, 1/8T, 1/16 with rate changes per bar. Growls: FM, wavetable position movement, formant-like filters, heavy saturation, OTT, resampling and re-processing. |
+| Bass | Two layers: a clean sine sub (MIDI 24–40, typically 28–40, mono, no effects, carries the fundamental) and the "mid" or "growl" bass (MIDI 40–55, high-passed around 80–100 Hz) that carries character. Riddim rhythms are repetitive, bouncy, triplet-heavy (eighth-note triplets, quarter-note triplets, dotted patterns), often two-bar phrases with the second bar as a response (different sound or pitch). Pitches move little: root, minor third, fifth, flat seventh; the groove and sound changes carry interest. Wobbles: tempo-synced LFO on a filter cutoff at 1/4, 1/8, 1/8T, 1/16 with rate changes per bar. Growls: FM, wavetable position movement, formant-like filters, heavy saturation, OTT, resampling and re-processing. |
 | Harmony | Minor keys (F minor, E minor, G minor, A minor are common). Often just the root as a drone plus a two-chord movement (i–VI, i–VII, i–iv) in intros and breakdowns. Drops are frequently monophonic: bass against the root. Melodic breakdowns use i–VI–III–VII or i–VII–VI pads and plucks. |
 | Sound palette | Growl/wobble/"screech" basses, metallic and vocal-formant textures, laser and zap FX, risers (noise + pitch), impacts and sub drops at the drop, vocal chops and shouts as rhythmic elements, orchestral or synth pads in breakdowns, sparse arps. Humour and call-and-response between two bass sounds is characteristic of riddim. |
 | Arrangement | Intro 16 → Build 16 → Drop 32 (16 + 16 with a switch-up) → Breakdown 16 → Build 8 → Drop 32 → Outro 4–8. Builds end with a snare roll, a riser and a silent last beat (or a vocal shout) before the drop. Second drops reuse the first drop's material with new bass patterns or sounds. See `templates/riddim-dubstep-structure.md`. |
@@ -43,9 +43,9 @@ Conventions, not rules. Use these for defaults when a lesson or study needs a st
 | Beat length | 0.5 s | 0.4286 s |
 | Bar length | 2.0 s | 1.714 s |
 | 16-bar section | 32 s | 27.4 s |
-| Sidechain release | 100–200 ms | 80–150 ms |
+| Sidechain release | 150–250 ms | 80–120 ms |
 | Delay sync | 1/8 dotted, 1/4 | 1/8, 1/8T |
 | Reverb decay (pads) | 2.5–4 s | 3–6 s (breakdowns only) |
-| Sub register | MIDI 36–43 under the bass, octave below | MIDI 28–40 |
+| Sub register | MIDI 24–40 (typically 28–40), an octave under the mid bass | MIDI 24–40 (typically 28–40) |
 | Mid bass register | MIDI 36–50 | MIDI 40–55 |
 | Lead register | MIDI 67–84 | MIDI 60–79 (breakdown melodies) |

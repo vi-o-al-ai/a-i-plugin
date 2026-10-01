@@ -38,7 +38,7 @@ Total: <bars> bars ≈ <m:ss>. Locators in the set match the Beats column.
 | Track in the set | Role | Register | Rhythm cell | Device used | Approximation note |
 |---|---|---|---|---|---|
 | Drums | groove | — | kick every beat, clap 2 and 4, offbeat hats | Drum Rack <kit> | kit sounds differ |
-| Sub | fundamental | MIDI 36–43 | on kicks | Operator sine | |
+| Sub | fundamental | MIDI 24–40 (typically 28–40) | on kicks | Operator sine | |
 | ... | | | | | |
 
 ## Energy curve

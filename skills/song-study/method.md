@@ -28,7 +28,7 @@ Common cases: synth-pop → four-on-the-floor, clap 2 and 4, offbeat hats; riddi
 ## 4. Bass relationship to the kick
 
 Listen for: does the bass hit with every kick, between kicks, or hold long notes; does it jump octaves; is there a separate sub hum under a brighter bass.
-Decide: rhythm cell (one bar), register (sub 28–40, mid 36–55), whether two layers are needed.
+Decide: rhythm cell (one bar), register (sub 24–40, typically 28–40; mid 36–55), whether two layers are needed.
 Tools: Sub and Bass tracks; `add_notes` roots following the chord chart; mono check via `get_notes` (no overlaps). Riddim: triplet cells and a 2-bar call/response; synth-pop: octave bounce or 8th pulses.
 
 ## 5. Hook rhythm, then contour
@@ -52,7 +52,7 @@ Tools: `set_automation` on Auto Filter Frequency / mixer Send A / Volume; fill c
 ## 8. Sound design (Melody and sound design level only)
 
 Listen for, per instrument: waveform family (buzzy saw / hollow square / pure sine / noisy), brightness, attack speed, movement (wobble, vibrato), space (dry / reverb / delay), width.
-Decide: a stock-device recipe per sound (`curriculum/topics/06-pads-and-leads.md`, `07-wobble-and-growl-bass.md`).
+Decide: a stock-device recipe per sound (`curriculum/topics/06-pads-and-leads.md`, `curriculum/topics/07-wobble-and-growl-bass.md`).
 Tools: `load_device`, `get_devices(include_params=true)`, `set_parameters`. Verify by `display` read-back; the user judges by ear with an A/B against the original.
 
 ## The compare-with-the-original listening exercise

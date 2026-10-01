@@ -5,7 +5,7 @@ description: Recreate a song inside Ableton Live 12 to study its composition, us
 
 # Song study
 
-`/ableton-live:study "<song>" by <artist>` rebuilds a song's bones in the user's set so they can see how it works, then writes a composition brief. Teaching behaviour comes from the `production-mentor` skill (Show me by default, `select`/`show_view` after each step, `why` on every mutating call, journal at `~/.claude-live/journal.md`). Genre defaults come from `curriculum/genre-notes.md` and `curriculum/templates/`.
+`/ableton-live:study "<song>" by <artist>` rebuilds a song's bones in the user's set so they can see how it works, then writes a composition brief. Teaching behaviour comes from the `production-mentor` skill (Show me by default, `select`/`show_view` after each step, `why` on every mutating call, journal at `~/.claude-live/journal.md` (or `$CLAUDE_LIVE_HOME/journal.md` when that variable is set)). Genre defaults come from `curriculum/genre-notes.md` and `curriculum/templates/`.
 
 Two limits, stated up front to the user every time: Claude cannot hear the original or the recreation; and Claude's memory of specific commercial songs varies, so song-specific facts carry a confidence label and anything filled in from genre knowledge is marked as reconstructed.
 

@@ -1,6 +1,6 @@
 ---
 name: live-devices
-description: Reference for Ableton Live 12 devices and what their parameters do: instruments (Wavetable, Operator, Analog, Drift, Drum Rack, Simpler), audio effects (EQ Eight, Compressor, Multiband Dynamics, Saturator, Roar, Auto Filter, Reverb, Echo, Delay, Chorus-Ensemble, Phaser-Flanger, Utility), MIDI effects (Arpeggiator, Chord, Scale, Velocity); LOM parameter names, starting ranges and recipes (pads, plucks, wobble/growl bass, sidechain pump, OTT). Load when choosing, loading or tweaking a device, when the user wants a sound brighter, wider, fatter, distorted or pumping, or before set_parameter.
+description: "Reference for Ableton Live 12 devices and what their parameters do: instruments (Wavetable, Operator, Analog, Drift, Drum Rack, Simpler), audio effects (EQ Eight, Compressor, Multiband Dynamics, Saturator, Roar, Auto Filter, Reverb, Echo, Delay, Chorus-Ensemble, Phaser-Flanger, Utility), MIDI effects (Arpeggiator, Chord, Scale, Velocity); LOM parameter names, starting ranges and recipes (pads, plucks, wobble/growl bass, sidechain pump, OTT). Load when choosing, loading or tweaking a device, when the user wants a sound brighter, wider, fatter, distorted or pumping, or before set_parameter."
 ---
 
 # Live 12 devices

@@ -71,14 +71,14 @@ Common UI-only tasks that must be Let me try (no tool can do them): Compressor s
 When: `/ableton-live:quiz`, "quiz me", or at the start of a lesson as a 2-question warm-up on the previous topic.
 
 Script:
-1. Read the journal. Pick 3–5 concepts from the last two or three lessons, favouring confidence 1–2.
+1. Read the journal. Pick five concepts (one question each) from the last two or three lessons, favouring confidence 1–2.
 2. Ask one question at a time. Mix types: definition ("what is a clip slot?"), number ("at 120 BPM, how long is one bar in seconds?"), set-based ("which track has the Compressor, and what is its release?" — check with `get_devices`), do-it ("put the snare on beat 3 of the Drums clip in scene 2" — verify with `get_notes`).
 3. Check against the set where possible. Answer in one or two sentences: correct/incorrect, the right answer, the why.
 4. Update confidence in the journal: a correct answer on a confidence-1 item moves it to 2; a correct do-it item verified clean moves it to 3; an incorrect answer notes a Struggle.
 5. End with one line on what to revisit.
 
 Example:
-> Claude: Q1 of 4: In half-time at 140 BPM, which beat does the snare land on, and what does that do to the felt tempo?
+> Claude: Q1 of 5: In half-time at 140 BPM, which beat does the snare land on, and what does that do to the felt tempo?
 > User: beat 3, feels like 70
 > Claude: Correct. Snare on 3 instead of 2 and 4 halves the felt pulse, so a 140 BPM track feels like 70 while hats can still move at 140. Q2: ...
 

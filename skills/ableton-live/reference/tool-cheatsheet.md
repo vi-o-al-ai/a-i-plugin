@@ -12,7 +12,7 @@ Every mutating tool also accepts `why: str` (history only). Clip address = `trac
 ## Session and transport
 - `get_session(include_clips=true, include_devices=true, include_params=false, include_returns=true)` — R. Whole set: transport, scale, tracks (+clips, devices), returns, master, scenes, selection. Heavy with `include_params`.
 - `get_transport()` — R. Tempo, signature, playing, position, loop, metronome, record flags, song_length.
-- `set_transport(tempo?, metronome?, loop_enabled?, loop_start?, loop_length?, position?, record_mode?, session_record?, signature_numerator?, signature_denominator?)` — M.
+- `set_transport(tempo?, metronome?, loop_enabled?, loop_start?, loop_length?, position?, signature_numerator?, signature_denominator?)` — M.
 - `play(from_start=false)` — M. `stop()` — M. `continue_playing()` — M.
 - `set_scale(root_note?: int|"C".."B", scale_name?)` — M. Live 12 only; bad name → error with `available`.
 - `undo(steps=1)` — M. `redo(steps=1)` — M.

@@ -8,7 +8,7 @@
 
 ## Section maps (details and tool sequences in the templates)
 
-| Synth-pop 120 BPM (`templates/synth-pop-structure.md`) | Riddim 140 BPM (`templates/riddim-dubstep-structure.md`) |
+| Synth-pop 120 BPM (`curriculum/templates/synth-pop-structure.md`) | Riddim 140 BPM (`curriculum/templates/riddim-dubstep-structure.md`) |
 |---|---|
 | Intro 8 · Verse 16 · Pre 8 · Chorus 16 · Verse 8 · Pre 8 · Chorus 16 · Bridge 8 · Final Chorus 16 · Outro 4 = 108 bars ≈ 3:36 | Intro 16 · Build 16 · Drop 32 · Breakdown 16 · Build 8 · Drop 32 · Outro 4 = 124 bars ≈ 3:33 |
 

@@ -55,7 +55,7 @@ load_device(name="Operator", track=<Sub>)        # sine; fall back to Drift
 load_device(name="Drift", track=<Bass>)          # saw, low-pass, mono
 load_device(name="Drift", track=<Chords>)        # or a pad preset via browse(query="Pad", categories=["sounds"])
 get_devices(track=<Bass>, device_path="0", include_params=true)   # real parameter names
-set_parameters(track=<Bass>, device_path="0", values=[{parameter:"Filter Freq", value:<~800 Hz>}, {parameter:<voice mode>, display:"Mono"}])
+set_parameters(track=<Bass>, device_path="0", values=[{parameter:"LP Freq", normalized:<~0.45>}, {parameter:<voice mode, if exposed>, display:"Mono"}])   # Drift names (LP Freq, LP Res/LP Reso); aim ≈ 800 Hz by the display read-back
 load_device(name="EQ Eight", track=<Bass>)       # low cut ~90 Hz on the mid bass
 
 # Drums: write the groove once as a 4-bar clip, then copy it into every scene that has drums
@@ -93,13 +93,13 @@ get_notes(...)                                   # in key, range ≤ 1.5 octaves
 
 # Sound design per track: read, set, read back
 get_devices(track=<Chords>, device_path="0", include_params=true)
-set_parameters(track=<Chords>, device_path="0", values=[{parameter:"Env 1 Attack", value:<~400 ms>}, {parameter:"Env 1 Release", value:<~2 s>}, {parameter:"Filter Freq", value:<~1.2 kHz>}, {parameter:"Osc 2 On", display:"On"}])
+set_parameters(track=<Chords>, device_path="0", values=[{parameter:"Env 1 Attack", normalized:<…>}, {parameter:"Env 1 Release", normalized:<…>}, {parameter:"LP Freq", normalized:<…>}, {parameter:"Osc 2 Gain", normalized:<…>}])   # aim ≈ 400 ms / 2 s / 1.2 kHz / −3 dB by display read-back; Drift has no Osc 2 On switch
 load_device(name="Compressor", track=<Chords>)   # sidechain to kick: user routes Audio From (curriculum/topics/08)
 create_return_track(name="A Reverb"); load_device(name="Reverb", track=0, track_type="return")
 set_track(track=<Chords>, sends=[{index:0, value:0.3}])
 
 # Riddim bass sound (curriculum/topics/07): Drift → Auto Filter → Saturator → OTT → EQ Eight
-load_device(name="Auto Filter", track=<Bass>); set_parameters(... LFO Sync on, LFO Sync Rate 1/8, LFO Amount 70%, Frequency ~400 Hz ...)
+load_device(name="Auto Filter", track=<Bass>); set_parameters(... LFO Sync display Sync, LFO Sync Rate display 1/8, LFO Amount normalized ≈ 0.7, Frequency normalized to read ≈ 400 Hz ...)
 load_device(name="Saturator", track=<Bass>); load_device(name="OTT", track=<Bass>, category="audio_effects")
 set_automation(track=<Bass>, slot=<drop>, device_path=<auto filter>, parameter="LFO Sync Rate", points=[...], mode="steps")
 

@@ -78,6 +78,6 @@ Device View → Compressor → click the ▸ at the far left of the device title
 
 Device View → Wavetable → the **Matrix** tab (right side) → the row for LFO 1 (or Env 2) → click the cell under the destination ("Filter 1 Freq", "Osc 1 Pos") and drag up to set the amount. Claude sets LFO rate/shape and the filter itself, but cannot create the routing.
 
-## Preferences → Link, Tempo & MIDI (control surface)
+## Settings → Link, Tempo & MIDI (control surface; Preferences in older Live versions)
 
-Live → Preferences (macOS) or Options → Preferences (Windows), Cmd/Ctrl+, (Live 12 may call it Settings). Tab **Link, Tempo & MIDI**. Under **Control Surface**, pick **ClaudeLive** in the first free row; leave Input and Output as "None". Live loads the script immediately; `ableton_status` should then show `connected: true`. If it says connection refused, the surface is not selected or Live is not running; if timeout, Live has a modal dialog open or is loading.
+Live → Settings (macOS) or Options → Settings (Windows), Cmd/Ctrl+,. Tab **Link, Tempo & MIDI**. Under **Control Surface**, pick **ClaudeLive** in the first free row; leave Input and Output as "None". Live loads the script immediately; `ableton_status` should then show `connected: true`. If it says connection refused, the surface is not selected or Live is not running; if timeout, Live has a modal dialog open or is loading.

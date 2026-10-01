@@ -9,14 +9,14 @@ Typical of the style, not a transcription of any song. 124 bars at 140 BPM = 496
 | 0 | Intro | 1–16 | 0–64 | 0:00 | Atmosphere pad on i (drone), filtered hats, a vocal-chop-style stab or FX every 4 bars, sub hint at bars 13–16. | 3 |
 | 1 | Build 1 | 17–32 | 64–128 | 0:27 | Snare on 3 enters at bar 17; riser from bar 25; hats double at bar 29; snare roll bars 31–32; **beat 4 of bar 32 silent** (or a shout). | 6 → 8 |
 | 2 | Drop 1 (A) | 33–48 | 128–192 | 0:55 | Half-time drums, wobble bass call (bars 33–34) and growl response (35–36) repeating; clean sub follows the bass roots; laser FX on phrase ends. | 10 |
-| 2 | Drop 1 (B) | 49–64 | 192–256 | 1:22 | Switch-up: new bass sound or rhythm (e.g. 1/16 wobble instead of triplets); extra kick on the "and" of 4 every second bar; fill at 63–64. | 10 |
-| 3 | Breakdown | 65–80 | 256–320 | 1:50 | Pad progression i–VI–III–VII, pluck melody, no kick/snare for bars 65–72; hats and a soft snare return at 73. | 4 |
-| 4 | Build 2 | 81–88 | 320–352 | 2:17 | Short build: riser + snare roll (8 bars), filter opening, silent last beat. | 8 |
-| 5 | Drop 2 (A) | 89–104 | 352–416 | 2:31 | Drop 1 A material with the roles swapped (growl calls, wobble answers) or a new growl. | 10 |
-| 5 | Drop 2 (B) | 105–120 | 416–480 | 2:58 | Second switch-up; densest bass rhythm of the track; double-time hats for bars 117–120. | 10 |
-| 6 | Outro | 121–124 | 480–496 | 3:26 | Sub tail on the root, atmosphere, one last FX hit. | 2 |
+| 3 | Drop 1 (B) | 49–64 | 192–256 | 1:22 | Switch-up: new bass sound or rhythm (e.g. 1/16 wobble instead of triplets); extra kick on the "and" of 4 every second bar; fill at 63–64. | 10 |
+| 4 | Breakdown | 65–80 | 256–320 | 1:50 | Pad progression i–VI–III–VII, pluck melody, no kick/snare for bars 65–72; hats and a soft snare return at 73. | 4 |
+| 5 | Build 2 | 81–88 | 320–352 | 2:17 | Short build: riser + snare roll (8 bars), filter opening, silent last beat. | 8 |
+| 6 | Drop 2 (A) | 89–104 | 352–416 | 2:31 | Drop 1 A material with the roles swapped (growl calls, wobble answers) or a new growl. | 10 |
+| 7 | Drop 2 (B) | 105–120 | 416–480 | 2:58 | Second switch-up; densest bass rhythm of the track; double-time hats for bars 117–120. | 10 |
+| 8 | Outro | 121–124 | 480–496 | 3:26 | Sub tail on the root, atmosphere, one last FX hit. | 2 |
 
-Drop halves share a scene number in Session (one 32-bar section, two 16-bar scenes if you want the switch-up as its own row: then renumber scenes 2a/2b and 5a/5b).
+Each drop half is its own scene so the switch-up has its own row; the `#` column is the Session scene index created by the Scenes block below, so use it as `slot` when placing clips.
 
 ## Role tracks
 
@@ -68,7 +68,7 @@ Skeleton placeholders: one empty MIDI clip per role per section, `create_clip(tr
 
 ## Checks after laying it out
 
-- 10 locators at the times above, ascending; the gap Build → Drop is exactly 64 beats (16 bars).
+- 10 locators at the times above, ascending; Build 1 → Drop 1 is 64 beats (16 bars), Build 2 → Drop 2 is 32 beats (8 bars).
 - Drums present in Build 1 (snare only in bars 17–24 is a variation clip), both drops, bars 73–80 of the Breakdown, Build 2; absent in Intro bars 1–8, Breakdown bars 65–72, Outro.
 - Sub and bass tracks empty in the Breakdown except the sub drone if intended.
 - The last beat before each drop (beats 124–128 and 348–352) has no drum notes.

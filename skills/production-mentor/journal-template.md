@@ -1,6 +1,6 @@
 # Learning journal: template and rules
 
-Path: `~/.claude-live/journal.md`. If it does not exist, create the directory and write the template below with the Write tool (not an MCP tool). Read it at the start of every lesson, explain, review, quiz or study; append at the end.
+Path: `~/.claude-live/journal.md` (or `$CLAUDE_LIVE_HOME/journal.md` when that variable is set). If it does not exist, create the directory and write the template below with the Write tool (not an MCP tool). Read it at the start of every lesson, explain, review, quiz or study; append at the end.
 
 ## Template
 

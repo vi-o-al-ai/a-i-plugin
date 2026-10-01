@@ -18,7 +18,7 @@ Four-on-the-floor (synth-pop / disco, 110–125 BPM), per bar:
 Half-time (riddim / dubstep, 140 BPM), per bar:
 - Kick at 0.0 only, velocity 120–127. At most one extra kick per two bars (1.5 or 3.5 in bars 2 or 4). No kick at 2.0.
 - Snare (38, often layered with clap 39) at 2.0 only. Nothing on 1.0 or 3.0.
-- Hats: 8ths at 70–90, or triplets (0.333 steps) on beats 2 and 4 only, or very sparse. Space is the point.
+- Hats: on beats 2 and 4 (1.0, 3.0), or on the offbeats (0.5, 1.5, 2.5, 3.5), or straight 8ths at 70–90, or triplets (0.333 steps) on beats 2 and 4 only — any of these passes; very sparse is fine. Space is the point.
 - Bar 4 (or 8): snare roll into the next phrase (3.0, 3.25, 3.5, 3.75 or 3.0, 3.333, 3.667) with velocities rising 80 → 120.
 
 Always check:
@@ -46,7 +46,7 @@ Read: `get_notes(track, slot)`; key from `get_session()` → `scale.root_note`, 
 Read: `get_notes(track, slot)`; chord roots from the chord clip; kick positions from the drum clip.
 
 - Monophonic: sort by start; for each note, `start + duration <= next.start` (allow 0.01). Overlaps smear the sub.
-- Register: sub MIDI 28–40 (Live labels E0–E1; roughly 41–82 Hz). Mid bass MIDI 36–52. Flag anything below 24 or a sub note above 43.
+- Register: sub MIDI 24–40 (Live labels C0–E1; roughly 33–82 Hz), typically 28–40. Mid bass MIDI 36–55. Flag a sub note below 24 or above 40.
 - In key, as for chords. Roots on chord changes: the note starting at each chord's start time should be the chord root (or 5th by intent).
 - Rhythm against the kick. Synth-pop: notes on the kicks (0, 1, 2, 3) or on the offbeats between them (0.5, 1.5…); the octave pop on 3.5 is idiomatic. Riddim: triplet groups (0, 0.333, 0.667), rests around the snare at 2.0 or a hit exactly with it; a 2-bar call then a 2-bar response.
 - Sub and mid bass on separate tracks play the same pitch class, sub one octave lower; the mid bass has a high-pass (EQ Eight Low Cut ~80–100 Hz).

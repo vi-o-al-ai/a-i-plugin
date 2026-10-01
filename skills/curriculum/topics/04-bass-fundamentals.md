@@ -10,11 +10,11 @@
 
 | Layer | Range | Live labels | Roughly |
 |---|---|---|---|
-| Sub | 28–40 | E0–E1 | 41–82 Hz: felt more than heard, mono, no effects |
+| Sub | 24–40, typically 28–40 | C0–E1 | 33–82 Hz: felt more than heard, mono, no effects |
 | Mid bass (synth-pop) | 36–50 | C1–D2 | 65–147 Hz: the note you hum |
 | Mid/growl bass (riddim) | 40–55 | E1–G2 | high-passed ~80–100 Hz; the sub owns what is below |
 
-Flag any sub note below 24 (inaudible on most systems) or above 43 (no longer "sub").
+Flag any sub note below 24 (inaudible on most systems) or above 40 (no longer "sub").
 
 ## Plan (15–20 min)
 
@@ -32,13 +32,13 @@ Write a second sub pattern in slot 1 that moves to the IV (synth-pop: G1 = 43; r
 
 ## Verification
 
-- Sub: all pitches 28–43; monophonic; every pitch class in scale; notes on kicks (synth-pop) or on 1 and 3 (riddim).
+- Sub: all pitches 24–40; monophonic; every pitch class in scale; notes on kicks (synth-pop) or on 1 and 3 (riddim).
 - Mid bass: pitches 36–55; monophonic; roots agree with the sub an octave up; EQ Eight low cut present after the instrument.
 - Both tracks pan centre (`pan.value` ≈ 0) and sends 0.0.
 
 ## Recap
 
-- Sub = one sine, mono, MIDI 28–40, on the root, no effects. Mid bass = character an octave up, high-passed.
+- Sub = one sine, mono, MIDI 24–40 (typically 28–40), on the root, no effects. Mid bass = character an octave up, high-passed.
 - Lock the bass to the kick: on it (synth-pop) or around it (riddim).
 - In key, on the root at every chord change; move to the 5th or IV for motion.
 

@@ -5,8 +5,8 @@ argument-hint: "\"<song>\" by <artist>"
 disable-model-invocation: true
 allowed-tools:
   - Read
-  - Write
-  - Edit
+  - Write(~/.claude-live/**)
+  - Edit(~/.claude-live/**)
   - mcp__plugin_ableton-live_live__ableton_status
   - mcp__plugin_ableton-live_live__get_session
   - mcp__plugin_ableton-live_live__get_transport
@@ -23,8 +23,6 @@ allowed-tools:
   - mcp__plugin_ableton-live_live__continue_playing
   - mcp__plugin_ableton-live_live__set_transport
   - mcp__plugin_ableton-live_live__set_scale
-  - mcp__plugin_ableton-live_live__undo
-  - mcp__plugin_ableton-live_live__redo
   - mcp__plugin_ableton-live_live__create_midi_track
   - mcp__plugin_ableton-live_live__create_audio_track
   - mcp__plugin_ableton-live_live__create_return_track
@@ -62,5 +60,5 @@ Arguments: `$ARGUMENTS` — the song to study, as `"<song>" by <artist>`. If it 
 
 1. Read the song-study skill and follow it exactly, with `$ARGUMENTS` as the song reference: `${CLAUDE_PLUGIN_ROOT}/skills/song-study/SKILL.md`. It defines how to analyse the reference (structure, tempo and key, harmony, rhythm, sound design, arrangement) and how to rebuild its ideas as a learning sketch in Live. Also read `${CLAUDE_PLUGIN_ROOT}/skills/production-mentor/SKILL.md` for the teaching voice if the song-study skill does not already say to. (If those paths still read literally as `${CLAUDE_PLUGIN_ROOT}/...`, the plugin root is two directories above this `SKILL.md`: skills live at `<plugin root>/skills/<name>/SKILL.md`.)
 2. Call `ableton_status` before building anything. If Live is not connected, do the analysis part only and say that the Live sketch can be built after `/ableton-live:setup`.
-3. Build only on new tracks and clips (never inside the user's existing material unless asked), fill in `why` on every mutating tool call, and never delete anything; use `undo` to revert your own steps when asked. Original ideas and techniques are the point: write your own material in the song's style rather than copying its recorded melody or lyrics.
-4. If the song-study skill asks for it, record the study in the learning journal at `~/.claude-live/journal.md` (expand `~`; `$CLAUDE_LIVE_HOME/journal.md` if that variable is set), creating the file if needed.
+3. Build only on new tracks and clips (never inside the user's existing material unless asked) and fill in `why` on every mutating tool call. Do not delete anything unless the user asks; deletion tools are not pre-approved here and will prompt. Use `undo` to revert your own steps when asked (it prompts too). For the hook, approximate the hook's contour and rhythm, labelled approximate; never claim a note-for-note transcription, and never reproduce lyrics.
+4. If the song-study skill asks for it, record the study in the learning journal at `~/.claude-live/journal.md` (or `$CLAUDE_LIVE_HOME/journal.md` when that variable is set; expand `~`), creating it from `${CLAUDE_PLUGIN_ROOT}/skills/production-mentor/journal-template.md` if needed and using that format. Writes under the default `~/.claude-live/` are pre-approved; the brief file in the working directory and a custom `CLAUDE_LIVE_HOME` prompt for permission, which is expected.

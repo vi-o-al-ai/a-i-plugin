@@ -18,7 +18,7 @@
 
 ## Exercise (Let me try)
 
-Make scene C: duplicate scene B's clip into slot 2 (select the clip, Cmd/Ctrl+D or drag with Option/Alt), then in Clip View move every note one 8th later by selecting all (Cmd/Ctrl+A) and dragging right by one grid step at 1/8 grid. Verify: `get_notes(track, slot=2)` starts are the originals + 0.5.
+Make scene C: duplicate scene B's clip into slot 2 (select the clip, Cmd/Ctrl+D or drag with Option/Alt), then in Clip View move every note one 16th later by selecting all (Cmd/Ctrl+A) and dragging right by one grid step at 1/16 grid (one 8th would push the last offbeat note onto `loop_end`, where it is silent). Verify: `get_notes(track, slot=2)` starts are the originals + 0.25, all below `loop_end`.
 
 ## Verification
 

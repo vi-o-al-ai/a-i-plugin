@@ -75,7 +75,7 @@ Worked 4-bar hook, C major over I–V–vi–IV (16-beat clip):
 ]
 ```
 19 notes. Check: every pitch in C major (C D E F G A B); each bar ends on a chord tone of its
-chord (E on C, D on G, A on Am, C on F); bar 3 is the peak (A5 = 81); bar 4 has the fewest notes
+chord (E on C, D on G, A on Am, C on F); bar 3 is the peak (A4 = 81); bar 4 has the fewest notes
 and the longest last note. The second half of each bar is a rest-free echo, so add rests by
 shortening `duration` if the lead patch has a long release.
 

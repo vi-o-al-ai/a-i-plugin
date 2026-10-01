@@ -1,6 +1,7 @@
 ---
 name: review
 description: Give a structured, beginner-friendly critique of the open Live set — what works, what to change and why, plus one exercise.
+argument-hint: "[focus]"
 disable-model-invocation: true
 allowed-tools:
   - Read

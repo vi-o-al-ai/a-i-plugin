@@ -17,7 +17,7 @@
 | A#/Bb | 10 | 34 | 46 | 58 | 70 | 82 |
 | B | 11 | 35 | 47 | 59 | 71 | 83 |
 
-Registers: sub bass 24–36 · bass 36–55 · chords/pads 55–76 · leads 67–91. Keep chords above
+Registers: sub bass 24–40 (typically 28–40) · mid bass 36–55 · chords/pads 55–76 · leads 67–91. Keep chords above
 ~55 (G2); triads lower than that turn to mud.
 
 Scale intervals: major `[0,2,4,5,7,9,11]`, natural minor `[0,2,3,5,7,8,10]`.

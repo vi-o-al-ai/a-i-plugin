@@ -1,6 +1,6 @@
 # Roar (`Roar`) — Live 12
 
-Three gain stages (each: a **shaper** with twelve curve types and a **filter**), six routing modes
+Three gain stages (each: a **shaper** with a dozen or so curve types (verify in Live) and a **filter**), six routing modes
 (Single, Serial, Parallel, Multi Band, Mid Side, Feedback), an input **Tone** section, a feedback
 path with its own time/pitch, built-in compression, and a modulation section (two LFOs, envelope
 follower, noise). The dubstep "bass distortion that moves" device.

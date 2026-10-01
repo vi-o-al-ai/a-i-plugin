@@ -30,7 +30,7 @@ Every voice moves ≤ 4 semitones between chords; the top note stays near 69–7
 2. **Show me · one chord (3 min).** `create_midi_track(name="Chords")`, `set_track(color_index=9)`, `load_device(name="Drift")`; `browse(query="Pad", categories=["sounds"])` and load a pad preset if the user prefers. `create_clip(track, slot=0, length=16.0, name="Prog A")`. `add_notes` the I chord for bar 1 only. `select(track, slot=0, show_clip_detail=true)`: "root, third, fifth: the third decides major or minor." Play.
 3. **Show me · the progression (3 min).** Add chords 2–4 from the table, why="I–V–vi–IV: the pop loop; each voice moves a step or stays". Play 4 bars. Name the numerals aloud and say what each does (I home, V tension, vi sad cousin, IV lift).
 4. **Show me · voicing A/B (3 min).** `duplicate_clip(track, slot=0, target_slot=1)`; in slot 1 `replace_notes` with root-position triads all starting from the root (D: 62 66 69, A: 69 73 76, B: 71 74 78, G: 67 71 74). Fire slot 1 then slot 0: "same chords; which one jumps around?" Keep slot 0; rename slot 1 "Root position (compare)".
-5. **Show me · harmonic rhythm (2 min).** `duplicate_clip(slot=0 → slot=2)`, name "Prog A pre-chorus": `replace_notes` so each chord lasts 2.0 and the 4 chords fit in 2 bars, repeated twice (8 chords), why="Doubling the chord rate lifts into a chorus". A/B against slot 0.
+5. **Show me · harmonic rhythm (2 min).** `duplicate_clip(track, slot=0, target_slot=2)`, name "Prog A pre-chorus": `replace_notes` so each chord lasts 2.0 and the 4 chords fit in 2 bars, repeated twice (8 chords), why="Doubling the chord rate lifts into a chorus". A/B against slot 0.
 6. **Let me try · colour (4 min).** Task: "In 'Prog A', add a 7th to the Bm chord in bar 3: draw an A (MIDI 69, the A3 row in Live) from 3.1 to the end of the bar. Then change the last chord's top note from B to A (drag the 71 note down two rows) so it becomes a Gsus2 colour." Verify `get_notes(from_time=8.0, time_span=8.0)`: pitches in key; the bar-3 chord has 4 voices; the bar-4 chord contains 69. Feedback: right / change / why ("7ths and sus/add colours are the shimmer in synth-pop pads").
 7. **Recap and journal (1 min).** Minor version if time remains, or schedule it as Next up.
 
@@ -53,4 +53,4 @@ Write the minor loop i–VI–III–VII in F minor in a new clip (slot 3), one c
 
 ## Go deeper
 
-[06-pads-and-leads.md](06-pads-and-leads.md) to make these chords sound lush; [04-bass-fundamentals.md](04-bass-fundamentals.md) to put roots under them; `genre-notes.md` for more progressions. Live's Chord and Scale MIDI effects (`load_device(name="Scale")`) can pin everything to the key as a safety net.
+[06-pads-and-leads.md](06-pads-and-leads.md) to make these chords sound lush; [04-bass-fundamentals.md](04-bass-fundamentals.md) to put roots under them; `curriculum/genre-notes.md` for more progressions. Live's Chord and Scale MIDI effects (`load_device(name="Scale")`) can pin everything to the key as a safety net.
