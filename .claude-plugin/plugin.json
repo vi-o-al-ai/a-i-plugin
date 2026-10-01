@@ -1,0 +1,22 @@
+{
+  "name": "ableton-live",
+  "displayName": "Ableton Live",
+  "version": "0.1.0",
+  "description": "Control, inspect and learn Ableton Live 12 from Claude Code: a bundled MCP server that talks to a Remote Script inside Live, knowledge skills about Live and music production, and slash commands for setup, status, lessons, reviews and song study.",
+  "author": {
+    "name": "vi-o-al-ai"
+  },
+  "homepage": "https://github.com/vi-o-al-ai/a-i-plugin#readme",
+  "repository": "https://github.com/vi-o-al-ai/a-i-plugin",
+  "license": "MIT",
+  "keywords": [
+    "ableton",
+    "ableton-live",
+    "live",
+    "daw",
+    "music",
+    "music-production",
+    "midi",
+    "mcp"
+  ]
+}

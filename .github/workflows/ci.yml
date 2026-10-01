@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    name: Server and Remote Script tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v6
+
+      - name: MCP server tests (uv project in server/)
+        run: uv run --directory server pytest
+
+      - name: Remote Script and protocol tests (stdlib Python 3.11, like Live's)
+        run: |
+          python3 -m pip install --quiet pytest
+          python3 -m pytest tests
+
+  validate:
+    name: Plugin manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install Claude Code
+        run: npm install -g @anthropic-ai/claude-code
+
+      # Both validations are needed: from the repo root the validator checks
+      # marketplace.json and plugin.json only; pointing it at plugin.json also
+      # checks .mcp.json (a server entry that fails the schema is silently
+      # dropped at load time, so this is the only place it gets caught).
+      # `claude plugin validate` is an offline, static check; it was verified
+      # to run with an empty HOME and no API key on Claude Code 2.1.286, so
+      # these steps are strict. If a future CLI release starts requiring
+      # login here, add `continue-on-error: true` to both steps and say why.
+      - name: Validate marketplace.json + plugin.json
+        run: claude plugin validate .
+
+      - name: Validate plugin.json + .mcp.json
+        run: claude plugin validate ./.claude-plugin/plugin.json
+
+      - name: Shell syntax
+        run: |
+          bash -n scripts/prewarm.sh
+          bash -n scripts/install-remote-script.sh
+          bash -n scripts/uninstall-remote-script.sh

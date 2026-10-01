@@ -1,0 +1,17 @@
+{
+  "description": "Pre-build the Python environment of the Ableton Live MCP server so the first tool call of a session is fast.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash \"${CLAUDE_PLUGIN_ROOT}/scripts/prewarm.sh\"",
+            "timeout": 600
+          }
+        ]
+      }
+    ]
+  }
+}
