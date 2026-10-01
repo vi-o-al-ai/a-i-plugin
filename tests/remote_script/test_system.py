@@ -16,13 +16,14 @@ def test_create_instance_exposed():
 
 def test_every_protocol_method_is_registered():
     """Every `ns.name` row in the PROTOCOL.md method tables has a handler, and the
-    only extra handler is the documented dev convenience sys.reload_handlers."""
+    only handler allowed to be missing from the tables is the dev convenience
+    sys.reload_handlers (documented or not)."""
     with io.open(PROTOCOL, "r", encoding="utf-8") as handle:
         text = handle.read()
     documented = set(re.findall(r"^\| `([a-z]+\.[a-z_]+)`", text, re.M))
     assert len(documented) >= 60
     assert documented - set(METHODS) == set()
-    assert set(METHODS) - documented == {"sys.reload_handlers"}
+    assert set(METHODS) - documented <= {"sys.reload_handlers"}
     assert all(callable(fn) for fn in METHODS.values())
 
 

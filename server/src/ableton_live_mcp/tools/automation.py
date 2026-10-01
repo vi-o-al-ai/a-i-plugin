@@ -96,14 +96,19 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
 
         async def do() -> dict[str, Any]:
             address = clip_address(track, slot, arrangement_index)
+            # PROTOCOL.md automation.clear: both device_path and parameter clear one envelope, neither
+            # clears every envelope (confirm), and device_path on its own is -32602. Checked here so
+            # the request the script would reject is never sent.
+            if (device_path is None) != (parameter is None):
+                raise invalid_params(
+                    "clear_automation needs both device_path and parameter to clear one envelope, "
+                    "or neither (with confirm=True) to clear every envelope in the clip",
+                    {"device_path": device_path, "parameter": parameter},
+                )
             if clearing_all:
                 where = f"slot {slot}" if slot is not None else f"arrangement clip {arrangement_index}"
                 require_confirm(confirm, "clear_automation", f"every automation envelope in track {track} {where}")
-            elif device_path is None:
-                raise invalid_params("device_path is required when parameter is given")
-            proto = {**address, **kw(device_path=device_path, parameter=parameter)}
-            if confirm:
-                proto["confirm"] = True
-            return await ctx.client.call("automation.clear", proto)
+                return await ctx.client.call("automation.clear", {**address, "confirm": True})
+            return await ctx.client.call("automation.clear", {**address, "device_path": device_path, "parameter": parameter})
 
         return await run_tool(ctx, "clear_automation", flags, params, why, do)

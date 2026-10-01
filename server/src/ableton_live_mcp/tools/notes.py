@@ -213,9 +213,9 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
     @mcp.tool(title="Transpose notes", annotations=MUTATE)
     async def transpose_notes(
         track: int,
+        semitones: int,
         slot: int | None = None,
         arrangement_index: int | None = None,
-        semitones: int = 0,
         from_time: float | None = None,
         time_span: float | None = None,
         from_pitch: int | None = None,

@@ -20,10 +20,17 @@ jobs:
       - name: MCP server tests (uv project in server/)
         run: uv run --directory server pytest
 
+      # Real server subprocess (stdio) <-> real Remote Script on the mock Live, via TCP.
+      # Runs in the server venv because the MCP client SDK lives there.
+      - name: End-to-end integration (server + Remote Script)
+        run: uv run --directory server pytest ../tests/integration -q
+
+      # tests/integration needs the mcp SDK and skips without it; it is excluded here so
+      # this step stays a pure-stdlib check of the Remote Script.
       - name: Remote Script and protocol tests (stdlib Python 3.11, like Live's)
         run: |
           python3 -m pip install --quiet pytest
-          python3 -m pytest tests
+          python3 -m pytest tests --ignore=tests/integration
 
   validate:
     name: Plugin manifests

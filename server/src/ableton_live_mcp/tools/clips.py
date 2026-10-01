@@ -51,10 +51,10 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         looping: bool | None = None,
         start_marker: float | None = None,
         end_marker: float | None = None,
-        launch_quantization: int | None = None,
+        launch_quantization: str | None = None,
         why: str | None = None,
     ) -> dict[str, Any]:
-        """Change a clip's name, color_index, loop range, looping flag, start/end markers (beats from clip start) or launch quantization."""
+        """Change a clip's name, color_index, loop range, looping flag, start/end markers (beats from clip start) or launch quantization (a name such as "q_global", "q_bar", "q_quarter", "q_sixteenth")."""
         fields = kw(
             name=name,
             color_index=color_index,
