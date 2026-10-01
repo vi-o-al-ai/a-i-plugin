@@ -2,13 +2,9 @@
   "mcpServers": {
     "live": {
       "type": "stdio",
-      "command": "uv",
+      "command": "bash",
       "args": [
-        "run",
-        "--frozen",
-        "--directory",
-        "${CLAUDE_PLUGIN_ROOT}/server",
-        "ableton-live-mcp"
+        "${CLAUDE_PLUGIN_ROOT}/scripts/run-server.sh"
       ],
       "env": {
         "UV_PROJECT_ENVIRONMENT": "${CLAUDE_PLUGIN_DATA}/venv"

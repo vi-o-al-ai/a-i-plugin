@@ -6,16 +6,24 @@
 #
 # Environment:
 #   ABLETON_USER_LIBRARY  Override the Ableton User Library path
-#                         (default: ~/Music/Ableton/User Library).
+#                         (default: ~/Music/Ableton/User Library). Set it if
+#                         you have moved your User Library.
 #   CLAUDE_PLUGIN_DATA    The plugin's persistent data directory, where the
 #                         server virtualenv is built. Claude Code provides it
 #                         to hooks and skills; the default below matches a
 #                         marketplace install of ableton-live@a-i-plugin.
 #
-# Idempotent: an existing ClaudeLive install is moved to
-# ClaudeLive.bak-<timestamp> before the new copy is written.
+# Safe to re-run: an existing ClaudeLive install is moved aside to
+# ClaudeLive.bak-<timestamp> (a counter is appended if that name is already
+# taken) before the new copy is written. Backups are never deleted by this
+# script; remove them with scripts/uninstall-remote-script.sh --all.
 
 set -euo pipefail
+: "${HOME:?HOME is not set}"
+
+# uv's usual install locations, which are missing from the PATH of a Claude
+# Code launched from a GUI (same prefix as scripts/run-server.sh and prewarm.sh).
+export PATH="$HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:$HOME/.cargo/bin:$PATH"
 
 plugin_root="$(cd "$(dirname "$0")/.." && pwd)"
 src="$plugin_root/remote-script/ClaudeLive"
@@ -46,7 +54,13 @@ info "Installing to: $dest"
 mkdir -p "$dest_parent"
 backup=""
 if [ -e "$dest" ]; then
-  backup="$dest_parent/ClaudeLive.bak-$(date +%Y%m%d-%H%M%S)"
+  stamp="$(date +%Y%m%d-%H%M%S)"
+  backup="$dest_parent/ClaudeLive.bak-$stamp"
+  n=1
+  while [ -e "$backup" ]; do
+    n=$((n + 1))
+    backup="$dest_parent/ClaudeLive.bak-$stamp-$n"
+  done
   mv "$dest" "$backup"
   info "Existing install moved to: $backup"
 fi
@@ -71,15 +85,15 @@ export UV_PROJECT_ENVIRONMENT="$data_dir/venv"
 info ""
 if ! command -v uv >/dev/null 2>&1; then
   info "uv is not installed, so the MCP server environment was not pre-built."
-  info "Install it, open a new terminal, then restart Claude Code:"
+  info "Install it (or: brew install uv), open a new terminal, then restart Claude Code:"
   info "    curl -LsSf https://astral.sh/uv/install.sh | sh"
 elif [ ! -f "$plugin_root/server/uv.lock" ]; then
   warn "$plugin_root/server/uv.lock not found; skipping the environment pre-build."
 else
-  info "Pre-building the MCP server environment with uv (the first run can take a minute)..."
+  info "Pre-building the MCP server environment with uv (the first run can take a minute; uv may download a managed Python)..."
   info "  venv: $UV_PROJECT_ENVIRONMENT"
   mkdir -p "$data_dir"
-  if uv sync --frozen --directory "$plugin_root/server"; then
+  if uv sync --frozen --no-dev --directory "$plugin_root/server"; then
     info "Server environment ready."
   else
     warn "uv sync failed. Claude Code retries when it launches the server; see Troubleshooting in the README."
@@ -90,7 +104,8 @@ cat <<'NEXT'
 
 Next steps
   1. Restart Ableton Live (or start it) so it discovers the new Remote Script.
-  2. Preferences -> Link, Tempo & MIDI -> Control Surface: choose "ClaudeLive".
-     Leave Input and Output set to "None".
+  2. Settings -> Link, Tempo & MIDI -> Control Surface: choose "ClaudeLive".
+     (The Settings window is called Preferences in older Live versions;
+     Cmd+, opens it either way.) Leave Input and Output set to "None".
   3. Open any Live Set, then in Claude Code run:  /ableton-live:status
 NEXT

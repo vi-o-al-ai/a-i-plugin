@@ -13,6 +13,7 @@
 #   claude plugin uninstall ableton-live@a-i-plugin
 
 set -euo pipefail
+: "${HOME:?HOME is not set}"
 
 remove_backups=0
 for arg in "$@"; do
@@ -54,7 +55,8 @@ fi
 
 cat <<'NEXT'
 
-If Live is running: Preferences -> Link, Tempo & MIDI -> set the ClaudeLive
-Control Surface slot back to "None", then restart Live.
+If Live is running: Settings -> Link, Tempo & MIDI (called Preferences in
+older Live versions) -> set the ClaudeLive Control Surface slot back to
+"None", then restart Live.
 Your action history and learning journal in ~/.claude-live were not touched.
 NEXT
