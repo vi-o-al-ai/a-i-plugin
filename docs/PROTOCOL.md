@@ -68,17 +68,19 @@ Application codes:
 | -32003 | `UNSUPPORTED` | The installed Live version lacks the API needed | `{"needs": "Live 12", "have": "11.3.4"}` |
 | -32004 | `LIVE_ERROR` | The LOM raised an exception | `{"exception": "RuntimeError", "detail": "..."}` |
 | -32005 | `TOO_LARGE` | Request exceeds a batch limit (e.g. > 1000 notes in one `notes.add`) | `{"limit": 1000, "got": 2400}` |
-| -32006 | `TIMEOUT` | Browser traversal or another bounded operation hit its internal time/node budget before finishing. Partial results are NOT returned via error; see `browser.search` which returns `truncated: true` instead. Reserved. | |
+| -32006 | `TIMEOUT` | A bounded operation (browser URI resolution in `browser.load` / `browser.list`) hit its per-tick time budget before finishing. Progress is cached, so the same call again continues where it stopped. Clients retry automatically (see §8). `browser.search` never uses this; it returns `truncated: true` instead. | `{"retry": true, "nodes_visited": 1234}` |
 
 `message` is always a human-readable sentence that Claude can act on. Prefer "Track 9 does not exist (set has 4 tracks)" over "index error".
 
 ## 4. Threading model (script side)
 
 1. A daemon thread owns the listening socket, accepts connections, reads lines, parses JSON, and pushes `(connection, request)` onto a thread-safe queue. It never touches the LOM.
-2. A recurring main-thread tick (scheduled via the ControlSurface framework, ~100 ms period) drains the queue, dispatches each request to its handler, and writes the response line back to the connection. Only this path touches the LOM.
-3. Per tick, the drain loop processes at most `MAX_REQUESTS_PER_TICK` (default 32) requests and stops early if it has spent more than `MAX_TICK_MS` (default 50 ms), so Live's UI never stalls. Remaining requests wait for the next tick.
-4. Any exception inside a handler is caught and converted to a JSON-RPC error. An exception in the tick loop itself is logged and the tick is rescheduled; the script never dies silently.
-5. On `disconnect()` the socket is closed and all client connections are dropped.
+2. A recurring main-thread tick (scheduled via the ControlSurface framework, ~100 ms period) drains the queue, dispatches each request to its handler, and hands the response line to the connection's outbox. Only this path touches the LOM. A per-connection writer thread drains the outbox with `sendall`, so a client that stops reading can never block Live's main thread. Requests whose connection has already closed are dropped without executing (a client that timed out and retried must not have its mutation run twice).
+3. Per tick, the drain loop processes at most `MAX_REQUESTS_PER_TICK` (default 32) requests and stops early if it has spent more than `MAX_TICK_MS` (default 50 ms), so Live's UI never stalls. Remaining requests wait for the next tick. The inbound queue is bounded (`queue_max`, default 256); reader threads block with back-pressure when it is full. At most `max_connections` (default 8) clients are accepted; further connections are closed immediately. Any single handler that cannot finish inside its budget must return partial progress (`truncated`) or `-32006 TIMEOUT` with `retry: true`, never spin.
+4. Logging from non-main threads never touches Live objects directly; such records are deferred to the next tick.
+5. Any exception inside a handler is caught and converted to a JSON-RPC error. An exception in the tick loop itself is logged and the tick is rescheduled; the script never dies silently.
+6. On `disconnect()` the socket is closed
+7. Config (`config.json` next to the package): `host` must be an IPv4 loopback address (anything else, including `::1`, is replaced by `127.0.0.1`), `port` 1–65535, `dev_mode` (default `false`) enables `sys.reload_handlers`, plus the limits above. and all client connections are dropped.
 
 Expected latency: one tick (~100 ms) plus handler time. Clients should budget accordingly (see §8).
 
@@ -107,7 +109,7 @@ These shapes are reused across methods.
 
 ```jsonc
 // TrackSummary
-{"index": 2, "track_type": "track", "name": "Bass", "type": "midi",      // "midi" | "audio" | "group" | "return" | "master"
+{"index": 2, "track_type": "track", "name": "Bass", "type": "midi",      // "midi" | "audio" | "group" | "return" | "master"; the master track reports index 0
  "color_index": 14, "color": "#FF9A00",
  "mute": false, "solo": false, "arm": true, "can_be_armed": true,
  "is_foldable": false, "is_grouped": false, "group_track_index": null,
@@ -125,7 +127,8 @@ These shapes are reused across methods.
  "start_time": null, "end_time": null,                 // arrangement clips only (song beats)
  "is_playing": false, "is_recording": false, "is_triggered": false,
  "signature_numerator": 4, "signature_denominator": 4,
- "note_count": 16}                                     // MIDI clips only; null for audio
+ "note_count": 16}                                     // MIDI clips only; null for audio. Counting notes is expensive, so list-style
+                                                       // methods only fill it when include_note_counts=true; clip.get always fills it.
 
 // Note
 {"id": 1234, "pitch": 60, "start": 0.0, "duration": 0.5, "velocity": 100,
@@ -144,7 +147,7 @@ These shapes are reused across methods.
 // DeviceDetail = DeviceSummary + 
 {"parameters": [Parameter...],
  "chains": [{"index": 0, "name": "Kick", "devices": [DeviceSummary...]}],   // racks only
- "drum_pads": [{"note": 36, "name": "Kick 909", "has_chain": true}]}        // drum racks only
+ "drum_pads": [{"note": 36, "name": "Kick 909", "has_chain": true}]}        // drum racks only; lists only pads that have a chain
 
 // Parameter
 {"index": 5, "name": "Filter Freq", "original_name": "Filter Freq",
@@ -187,16 +190,17 @@ Namespaces: `sys`, `song`, `view`, `track`, `scene`, `clip`, `notes`, `device`, 
 | Method | Params | Result | Notes |
 |---|---|---|---|
 | `sys.ping` | — | `{"script_version", "protocol_version": 1, "live_version": "12.1.5", "live_major": 12, "live_minor": 1, "python_version", "tick_count"}` | Handshake. |
-| `sys.describe_api` | `{"path"?: str, "classes"?: [str]}` | `{"path": "...", "classes": 42, "bytes": 12345}` | Introspects the `Live` module (and `_Framework.ControlSurface`) via `dir()`/`__doc__` and writes a Markdown dump to `path` (default: `<script dir>/live_api_dump.md`). Ground truth for debugging. |
-| `sys.log` | `{"message": str}` | `{"ok": true}` | Writes `[ClaudeLive] message` to Live's Log.txt. |
+| `sys.describe_api` | `{"classes"?: [str]}` | `{"path": "...", "classes": 42, "bytes": 12345}` | Introspects the `Live` module (and `_Framework.ControlSurface`) via `dir()`/`__doc__` and writes a Markdown dump to `~/.claude-live/api/live_api_<live_version>.md` (directories created; falls back to `<script dir>/live_api_dump.md` if that location is not writable). The client never chooses the path. Ground truth for debugging. **M** (writes a file). |
+| `sys.reload_handlers` | — | `{"reloaded": [module names]}` | Dev only: re-imports the handler and `lom` modules so handler edits take effect without restarting Live (`ClaudeLive.py`, `server.py`, `dispatcher.py` still need a restart). Returns `-32601` unless `dev_mode: true` in `config.json`. Not exposed as an MCP tool. |
+| `sys.log` | `{"message": str}` | `{"ok": true}` | Writes `[ClaudeLive] message` to Live's Log.txt. Message is truncated to 1000 characters and newlines are replaced by spaces. |
 
 ### song
 
 | Method | Params | Result | Flags |
 |---|---|---|---|
-| `song.get_overview` | `{"include_clips"?: true, "include_devices"?: true, "include_params"?: false, "include_returns"?: true}` | `{"transport": Transport, "scale": Scale\|null, "tracks": [TrackSummary + "clips": [ClipSummary], "devices": [DeviceSummary]], "return_tracks": [...], "master": TrackSummary + devices, "scenes": [SceneSummary], "selection": Selection, "live_version": str}` | Heavy; `include_params` adds `parameters` to each device. |
+| `song.get_overview` | `{"include_clips"?: true, "include_devices"?: true, "include_params"?: false, "include_returns"?: true, "include_note_counts"?: false}` | `{"transport": Transport, "scale": Scale\|null, "tracks": [TrackSummary + "clips": [ClipSummary], "devices": [DeviceSummary]], "return_tracks": [...], "master": TrackSummary + devices, "scenes": [SceneSummary], "selection": Selection, "live_version": str}` | Heavy; `include_params` adds `parameters` to each device. |
 | `song.get_transport` | — | `Transport` | |
-| `song.set_transport` | `{"tempo"?, "metronome"?, "loop_enabled"?, "loop_start"?, "loop_length"?, "record_mode"?, "session_record"?, "position"?, "signature_numerator"?, "signature_denominator"?}` | `Transport` | **M** (position/metronome changes are not undoable but recorded) |
+| `song.set_transport` | `{"tempo"?, "metronome"?, "loop_enabled"?, "loop_start"?, "loop_length"?, "record_mode"?, "session_record"?, "position"?, "signature_numerator"?, "signature_denominator"?}` | `Transport` | **M** (position/metronome changes are not undoable but recorded). `record_mode` / `session_record` exist in the protocol but are deliberately NOT exposed by the MCP tool in v1: they can record over the user's material. |
 | `song.play` | `{"from_start"?: false}` | `Transport` | `start_playing()`; with `from_start`, set position 0 first. |
 | `song.stop` | — | `Transport` | `stop_playing()` |
 | `song.continue` | — | `Transport` | `continue_playing()` |
@@ -208,7 +212,7 @@ Namespaces: `sys`, `song`, `view`, `track`, `scene`, `clip`, `notes`, `device`, 
 | `song.create_midi_track` | `{"index"?: -1, "name"?: str}` | `TrackSummary` | **M** |
 | `song.create_audio_track` | `{"index"?: -1, "name"?: str}` | `TrackSummary` | **M** |
 | `song.create_return_track` | `{"name"?: str}` | `TrackSummary` | **M** |
-| `song.delete_track` | `{"track", "confirm"}` | `{"deleted": "Bass", "track_count": 3}` | **M D** |
+| `song.delete_track` | `{"track", "track_type"?: "track" \| "return", "confirm"}` | `{"deleted": "Bass", "track_type": "track", "track_count": 3}` | **M D**. `track_type: "master"` → `INVALID_STATE`. |
 | `song.create_scene` | `{"index"?: -1, "name"?: str}` | `SceneSummary` | **M** |
 | `song.duplicate_scene` | `{"scene"}` | `SceneSummary` (the new scene) | **M** |
 | `song.delete_scene` | `{"scene", "confirm"}` | `{"deleted": "Intro", "scene_count": 7}` | **M D** |
@@ -225,7 +229,7 @@ Namespaces: `sys`, `song`, `view`, `track`, `scene`, `clip`, `notes`, `device`, 
 
 | Method | Params | Result | Flags |
 |---|---|---|---|
-| `track.get` | `{"track", "track_type"?, "include_clips"?: true, "include_devices"?: true, "include_params"?: false}` | `TrackSummary + clips + devices` | |
+| `track.get` | `{"track", "track_type"?, "include_clips"?: true, "include_devices"?: true, "include_params"?: false, "include_note_counts"?: false}` | `TrackSummary + clips + devices` | |
 | `track.set` | `{"track", "track_type"?, "name"?, "color_index"?, "mute"?, "solo"?, "arm"?, "volume"?, "pan"?, "sends"?: [{"index", "value"}], "fold"?: bool}` | `TrackSummary` | **M**. Rejects `arm` on tracks that cannot be armed with `INVALID_STATE`. |
 | `track.stop_clips` | `{"track"}` | `{"ok": true}` | **M** |
 
@@ -233,7 +237,7 @@ Namespaces: `sys`, `song`, `view`, `track`, `scene`, `clip`, `notes`, `device`, 
 
 | Method | Params | Result | Flags |
 |---|---|---|---|
-| `scene.set` | `{"scene", "name"?, "color_index"?, "tempo"?: float\|null}` | `SceneSummary` | **M** |
+| `scene.set` | `{"scene", "name"?, "color_index"?, "tempo"?: float\|null}` | `SceneSummary` | **M**. `tempo: null` clears the scene tempo (the MCP tool exposes this as `clear_tempo: true`). |
 | `scene.fire` | `{"scene"}` | `SceneSummary` | **M** |
 
 ### clip
@@ -244,7 +248,7 @@ Clip address = `track` + (`slot` | `arrangement_index`).
 |---|---|---|---|
 | `clip.create` | `{"track", "slot", "length": float, "name"?}` | `ClipSummary` | **M**. `INVALID_STATE` if slot occupied or track is audio. |
 | `clip.get` | `{clip address}` | `ClipSummary` | |
-| `clip.set` | `{clip address, "name"?, "color_index"?, "loop_start"?, "loop_end"?, "looping"?, "start_marker"?, "end_marker"?, "launch_quantization"?}` | `ClipSummary` | **M**. Order of application: `looping`, `loop_end`, `loop_start`, `end_marker`, `start_marker` (Live rejects loop_start ≥ loop_end). |
+| `clip.set` | `{clip address, "name"?, "color_index"?, "loop_start"?, "loop_end"?, "looping"?, "start_marker"?, "end_marker"?, "launch_quantization"?: str}` | `ClipSummary` | **M**. `launch_quantization` is one of `q_global`, `q_none`, `q_8_bars`, `q_4_bars`, `q_2_bars`, `q_bar`, `q_half`, `q_half_triplet`, `q_quarter`, `q_quarter_triplet`, `q_eight`, `q_eight_triplet`, `q_sixtenth`, `q_sixtenth_triplet`, `q_thirtysecond`. Application order: `looping` first; then for each (start, end) pair the end is written before the start, except when the new end ≤ the current start, in which case start is written first (Live rejects start ≥ end in either order otherwise); a request where new start ≥ new end fails `-32602` before touching Live. On unlooped clips Live aliases loop points to the start/end markers, so set one pair or the other. |
 | `clip.fire` | `{"track", "slot"}` | `ClipSummary \| {"fired_empty_slot": true}` | **M**. Fires the slot (works on empty slots as a stop button). |
 | `clip.stop` | `{"track", "slot"?}` | `{"ok": true}` | **M**. Without `slot`, stops all clips on the track. |
 | `clip.duplicate` | `{"track", "slot", "target_track"?: same, "target_slot"}` | `ClipSummary` (the copy) | **M**. `INVALID_STATE` if target occupied. |
@@ -260,7 +264,7 @@ All take a clip address; `INVALID_STATE` if the clip is not MIDI. `notes.add`/`n
 | `notes.get` | `{clip address, "from_time"?: 0, "time_span"?: clip loop_end or 1e6, "from_pitch"?: 0, "pitch_span"?: 128}` | `{"notes": [Note], "count", "clip_length"}` | Sorted by start then pitch. |
 | `notes.add` | `{clip address, "notes": [NoteSpec]}` | `{"added", "note_count"}` | **M** |
 | `notes.replace` | `{clip address, "notes": [NoteSpec]}` | `{"removed", "added", "note_count"}` | **M**. Removes all notes, then adds. |
-| `notes.remove` | `{clip address, "note_ids"?: [int], "from_time"?, "time_span"?, "from_pitch"?, "pitch_span"?}` | `{"removed", "note_count"}` | **M**. With `note_ids`, removes exactly those. Otherwise removes the range (defaults = all). |
+| `notes.remove` | `{clip address, "note_ids"?: [int], "from_time"?, "time_span"?, "from_pitch"?, "pitch_span"?, "confirm"?}` | `{"removed", "note_count"}` | **M**. With `note_ids`, removes exactly those. Otherwise removes the range. Calling it with neither `note_ids` nor any range parameter removes every note and therefore requires `confirm: true` (**D**); use `notes.replace` with `[]` for an intentional clear-and-rewrite. |
 | `notes.modify` | `{clip address, "changes": [{"id", "pitch"?, "start"?, "duration"?, "velocity"?, "mute"?, "probability"?, "velocity_deviation"?, "release_velocity"?}]}` | `{"modified", "missing_ids": []}` | **M**. In place via note ids. |
 | `notes.quantize` | `{clip address, "grid": 0.25, "amount": 1.0, "swing"?: 0.0, "quantize_ends"?: false}` | `{"modified"}` | **M**. Implemented via `notes.modify` semantics in the script. `swing` 0–1 delays every second grid step by up to half a grid. |
 | `notes.transpose` | `{clip address, "semitones": int, "from_time"?, "time_span"?, "from_pitch"?, "pitch_span"?}` | `{"modified"}` | **M**. Clamps to 0–127. |
@@ -272,7 +276,7 @@ All take a clip address; `INVALID_STATE` if the clip is not MIDI. `notes.add`/`n
 | `device.list` | `{"track", "track_type"?, "include_params"?: false, "depth"?: 2}` | `{"devices": [DeviceSummary or DeviceDetail], "mixer": {"path": "mixer", "parameters": [Parameter]}}` | `depth` limits rack recursion. |
 | `device.get` | `{"track", "track_type"?, "path", "include_params"?: true}` | `DeviceDetail` | |
 | `device.get_parameter` | `{"track", "track_type"?, "path", "parameter"}` | `Parameter` | |
-| `device.set_parameter` | `{"track", "track_type"?, "path", "parameter", "value"?: float, "normalized"?: 0..1, "display"?: str}` | `{"parameter": Parameter, "previous": {"value", "display"}, "clamped": bool}` | **M**. Exactly one of `value` / `normalized` / `display`. `display` matches `value_items` for quantized params (case-insensitive) or fails `-32602`. Values outside `[min,max]` are clamped and reported. |
+| `device.set_parameter` | `{"track", "track_type"?, "path", "parameter", "value"?: float, "normalized"?: 0..1, "display"?: str}` | `{"parameter": Parameter, "previous": {"value", "display"}, "clamped": bool}` | **M**. Exactly one of `value` / `normalized` / `display`. `display` matches `value_items` for quantized params (case-insensitive) or fails `-32602`; for continuous params it is best-effort: a monotonic search for the value whose `str_for_value` matches (e.g. `"-6.0 dB"`), `-32602` if none. Values outside `[min,max]` are clamped and reported. |
 | `device.set_parameters` | `{"track", "track_type"?, "path", "values": [{"parameter", "value"? , "normalized"?, "display"?}]}` | `{"results": [... as above ...], "errors": [{"parameter", "code", "message"}]}` | **M**. Partial success allowed. |
 | `device.set_enabled` | `{"track", "track_type"?, "path", "enabled": bool}` | `{"is_active": bool}` | **M**. Via the `Device On` parameter. |
 | `device.delete` | `{"track", "track_type"?, "path", "confirm"}` | `{"deleted": "Reverb"}` | **M D** |
@@ -283,19 +287,19 @@ Categories: `instruments`, `sounds`, `drums`, `audio_effects`, `midi_effects`, `
 
 | Method | Params | Result | Flags |
 |---|---|---|---|
-| `browser.search` | `{"query": str, "categories"?: [str] (default: instruments, drums, audio_effects, midi_effects, sounds), "limit"?: 25, "loadable_only"?: true, "max_nodes"?: 5000}` | `{"items": [{"name", "uri", "category", "path": ["Instruments","Wavetable",...], "is_loadable", "is_folder", "is_device"}], "truncated": bool, "nodes_visited"}` | Case-insensitive substring over `name`; results ordered: exact name match, then prefix, then substring. Traversal bounded by `max_nodes` and ~40 ms per tick; may span several ticks internally but returns one response. |
-| `browser.list` | `{"category"?: str, "uri"?: str, "limit"?: 100}` | `{"items": [...], "truncated"}` | Children of a category root or of the node with `uri`. |
-| `browser.load` | `{"uri": str, "track"?, "track_type"?, "after_device_path"?: str}` | `{"loaded": DeviceSummary \| null, "track": TrackSummary, "devices": [DeviceSummary], "method": "load_item"}` | **M**. Selects the target track (and device, if `after_device_path`) first, then `browser.load_item`. `loaded` is derived by diffing the device list before/after; null if the item was not a device (e.g. a clip or sample). |
+| `browser.search` | `{"query": str, "categories"?: [str] (default: instruments, drums, audio_effects, midi_effects, sounds), "limit"?: 25, "loadable_only"?: true, "max_nodes"?: 5000}` | `{"items": [{"name", "uri", "category", "path": ["Instruments","Wavetable",...], "is_loadable", "is_folder", "is_device"}], "truncated": bool, "nodes_visited"}` | Case-insensitive substring over `name`; results ordered: exact name match, then prefix, then substring. **Resumable:** each call traverses for at most ~40 ms (`browser_time_budget_ms`) and `max_nodes` nodes, returns the items found *in this call*, and sets `truncated: true` if the traversal is not finished; the position is cached per category (TTL `browser_cache_ttl_s`, default 60 s), so calling again with the same `query` and `categories` continues where it stopped. The MCP server loops until `truncated` is false (bounded at 25 calls) and merges results by `uri`. Result also carries `total_matches`. |
+| `browser.list` | `{"category"?: str, "uri"?: str, "limit"?: 100}` | `{"items": [...], "truncated", "count"}` | Children of a category root or of the node with `uri`. Resolving a `uri` is bounded by the same per-tick budget and may return `-32006 TIMEOUT` with `retry: true`; progress is cached so a retry continues. |
+| `browser.load` | `{"uri": str, "track"?, "track_type"?, "after_device_path"?: str}` | `{"loaded": DeviceSummary \| null, "track": TrackSummary, "devices": [DeviceSummary], "method": "load_item"}` | **M**. Selects the target track (and device, if `after_device_path`, using `DeviceInsertMode.selected_right`, restored afterwards) first, then `browser.load_item`. `loaded` is derived by diffing the device list before/after; null if the item was not a device (e.g. a clip or sample). Result also carries `item` (the browser item loaded). URI resolution may return `-32006 TIMEOUT` with `retry: true` (see `browser.list`). Only browser URIs are accepted; file paths are not. |
 
 ### arrangement
 
 | Method | Params | Result | Flags |
 |---|---|---|---|
-| `arrangement.get_overview` | `{"include_clips"?: true}` | `{"song_length", "loop": {...}, "locators": [CuePoint], "tracks": [{"index", "name", "clips": [ClipSummary (with start_time/end_time)]}]}` | The "composition view". |
-| `arrangement.get_clips` | `{"track"}` | `{"clips": [ClipSummary]}` | |
-| `arrangement.add_clip_from_slot` | `{"track", "slot", "time": float, "delete_source"?: false}` | `ClipSummary` (the arrangement clip) | **M**. `Track.duplicate_clip_to_arrangement`. |
-| `arrangement.set_locator` | `{"time": float, "name"?: str}` | `CuePoint` | **M**. Creates a locator at `time` (or renames the one already there). |
-| `arrangement.delete_locator` | `{"index"}` | `{"deleted": "Drop"}` | **M** |
+| `arrangement.get_overview` | `{"include_clips"?: true, "include_note_counts"?: false}` | `{"song_length", "loop": {...}, "locators": [CuePoint], "tracks": [{"index", "name", "clips": [ClipSummary (with start_time/end_time)]}]}` | The "composition view". |
+| `arrangement.get_clips` | `{"track", "include_note_counts"?: false}` | `{"clips": [ClipSummary]}` | |
+| `arrangement.add_clip_from_slot` | `{"track", "slot", "time": float, "delete_source"?: false, "confirm"?}` | `ClipSummary` (the arrangement clip) | **M**. `Track.duplicate_clip_to_arrangement`. `delete_source: true` deletes the session clip afterwards and requires `confirm: true` (**D**). |
+| `arrangement.set_locator` | `{"time": float, "name"?: str}` | `CuePoint` | **M**. Creates a locator at `time` (or renames the one already there). Live only offers "toggle a cue at the playhead", so the script moves the playhead to `time`, toggles, and restores it. While the transport is playing this would relocate playback, so it fails with `INVALID_STATE` ("stop playback first"). |
+| `arrangement.delete_locator` | `{"index"}` | `{"deleted": "Drop", "time": 64.0}` | **M**. Same playhead mechanism and same `INVALID_STATE` while playing. |
 
 ### automation
 
@@ -303,9 +307,9 @@ Categories: `instruments`, `sounds`, `drums`, `audio_effects`, `midi_effects`, `
 
 | Method | Params | Result | Flags |
 |---|---|---|---|
-| `automation.get` | `{clip address, "device_path", "parameter", "from_time"?: 0, "time_span"?: clip length, "resolution"?: 0.25}` | `{"exists": bool, "points": [{"time", "value"}], "parameter": Parameter}` | Samples `value_at_time`. |
-| `automation.set` | `{clip address, "device_path", "parameter", "points": [{"time", "value"}], "mode"?: "steps" \| "ramp", "resolution"?: 0.0625}` | `{"inserted": int, "exists": true}` | **M**. Creates the envelope if needed. `steps`: each point holds until the next. `ramp`: linear interpolation between points, written as steps at `resolution`. Last point holds to clip end. |
-| `automation.clear` | `{clip address, "device_path"?, "parameter"?, "confirm"?}` | `{"cleared": "Filter Freq" \| "all"}` | **M**. Clearing all envelopes (no parameter) requires `confirm` (**D**). |
+| `automation.get` | `{clip address, "device_path", "parameter", "from_time"?: 0, "time_span"?: clip length, "resolution"?: 0.25}` | `{"exists": bool, "points": [{"time", "value"}], "parameter": Parameter}` | Samples `value_at_time` over `[from_time, from_time + time_span)` (end excluded). More than 2000 samples → `-32005`. |
+| `automation.set` | `{clip address, "device_path", "parameter", "points": [{"time", "value"}], "mode"?: "ramp" (default) \| "steps", "resolution"?: 0.0625}` | `{"inserted": int, "exists": true, "mode": "ramp" \| "steps"}` | **M**. Creates the envelope if needed. `steps`: each point holds until the next. `ramp`: linear interpolation between points, written as steps at `resolution`. Last point holds to clip end. Quantized parameters are always written as steps with rounded values (result reports `mode: "steps"`). More than 2000 resulting steps → `-32005 TOO_LARGE`; points outside the clip are clamped. |
+| `automation.clear` | `{clip address, "device_path"?, "parameter"?, "confirm"?}` | `{"cleared": "Filter Freq" \| "all"}` | **M**. Give both `device_path` and `parameter` to clear one envelope, or neither to clear all; `device_path` without `parameter` is `-32602`. Clearing all requires `confirm` (**D**). |
 
 ## 8. Client guidance (MCP server side)
 
@@ -321,6 +325,10 @@ Connection errors must be translated into a message that names the likely cause,
 3. Protocol error → include the raw line for debugging.
 
 The client reconnects transparently on the next call after a failure.
+
+Bounded operations: on `-32006 TIMEOUT` with `data.retry: true` the client repeats the same call (up to 10 times) before surfacing the error. On `browser.search` with `truncated: true` the client calls again with the same query (up to 25 times), merging items by `uri`, and only then reports `truncated` to the model.
+
+Additive result fields a client may see beyond the tables above: `device.set_enabled`/`device.delete` add `path`; `device.set_parameters.errors[]` add `index`; `clip.fire` on an empty slot adds `track`/`slot`; `view.get_selection.detail_clip` adds `arrangement_index` for arrangement clips; `song.get_overview` tracks carry `clip_count` and the mixer pseudo-device has `type: "mixer"`. Return tracks never carry clips.
 
 ## 9. Versioning
 
