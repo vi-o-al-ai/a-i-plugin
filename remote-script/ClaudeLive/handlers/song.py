@@ -15,13 +15,14 @@ TEMPO_MAX = 999.0
 SIGNATURE_DENOMINATORS = (1, 2, 4, 8, 16)
 
 
-def _track_with_children(ctx, song, track, index, track_type, include_clips, include_devices, include_params):
+def _track_with_children(ctx, song, track, index, track_type, include_clips, include_devices, include_params,
+                         include_note_counts=False):
     summary = lom.track_summary(song, track, index, track_type)
     if include_clips:
         clips = []
         for si, slot in enumerate(lom.as_list(lom.safe_get(track, "clip_slots"))):
             if lom.safe_get(slot, "has_clip", False):
-                clips.append(lom.clip_summary(slot.clip, index, si, None))
+                clips.append(lom.clip_summary(slot.clip, index, si, None, include_note_count=include_note_counts))
         summary["clips"] = clips
     if include_devices:
         summary["devices"] = lom.device_entries(track, include_params, depth=1)
@@ -34,8 +35,10 @@ def get_overview(ctx, params):
     include_devices = lom.get_bool(params, "include_devices", True)
     include_params = lom.get_bool(params, "include_params", False)
     include_returns = lom.get_bool(params, "include_returns", True)
+    include_note_counts = lom.get_bool(params, "include_note_counts", False)
 
-    tracks = [_track_with_children(ctx, song, t, i, "track", include_clips, include_devices, include_params)
+    tracks = [_track_with_children(ctx, song, t, i, "track", include_clips, include_devices, include_params,
+                                   include_note_counts)
               for i, t in enumerate(lom.as_list(song.tracks))]
     returns = []
     if include_returns:

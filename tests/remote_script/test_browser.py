@@ -74,6 +74,31 @@ def test_search_time_budget(rpc, control_surface):
     assert result["truncated"] is True
 
 
+def test_search_counts_only_nodes_visited_this_call(rpc):
+    first = rpc("browser.search", query="reverb")
+    assert first["truncated"] is False and first["nodes_visited"] > 10
+    # Everything is cached now: a repeat visits nothing new yet still scans every entry.
+    second = rpc("browser.search", query="reverb")
+    assert second["nodes_visited"] == 0 and second["truncated"] is False
+    assert second["items"] == first["items"] and second["total_matches"] == 3
+    # max_nodes is a per-call bound on new traversal; cached entries are never cut off by it.
+    third = rpc("browser.search", query="reverb", max_nodes=1)
+    assert third["nodes_visited"] == 0 and third["truncated"] is False and third["total_matches"] == 3
+
+
+def test_search_max_nodes_is_per_call(rpc):
+    first = rpc("browser.search", query="reverb", max_nodes=4)
+    assert first["truncated"] is True and first["nodes_visited"] == 4
+    second = rpc("browser.search", query="reverb", max_nodes=4)
+    assert second["nodes_visited"] == 4  # not 8: the count restarts every call
+    # Eventually the traversal finishes and the cached index answers everything.
+    for _ in range(50):
+        result = rpc("browser.search", query="reverb", max_nodes=4)
+        if not result["truncated"]:
+            break
+    assert result["truncated"] is False and result["total_matches"] == 3
+
+
 def test_search_invalid(rpc):
     assert rpc.err("browser.search", query="")["code"] == -32602
     assert rpc.err("browser.search")["code"] == -32602
@@ -132,6 +157,68 @@ def test_load_after_device_path(rpc, fake_live):
     assert result["loaded"]["path"] == "2"
     track = fake_live.song.tracks[2]
     assert track.view.device_insert_mode == Live.Track.DeviceInsertMode.default
+
+
+def test_load_restores_previous_insert_mode(rpc, fake_live):
+    track = fake_live.song.tracks[2]
+    track.view.device_insert_mode = Live.Track.DeviceInsertMode.selected_left
+    result = rpc("browser.load", uri=SATURATOR, track=2, after_device_path="1")
+    assert result["loaded"]["path"] == "2"
+    assert track.view.device_insert_mode == Live.Track.DeviceInsertMode.selected_left
+    # Restored on failure too.
+    error = rpc.err("browser.load", uri="query:Synths", track=2, after_device_path="1")
+    assert error["code"] == -32001
+    assert track.view.device_insert_mode == Live.Track.DeviceInsertMode.selected_left
+
+
+def test_find_entry_times_out_and_retry_continues(rpc, control_surface):
+    control_surface.settings["browser_time_budget_ms"] = 0.000001
+    error = rpc.err("browser.load", uri=SATURATOR, track=1)
+    assert error["code"] == -32006
+    assert error["data"]["retry"] is True and error["data"]["nodes_visited"] == 0
+    assert "call again" in error["message"]
+    cache = control_surface.ctx.state["browser_index"]
+    assert cache["audio_effects"].complete is False  # progress is cached, not thrown away
+    partial = cache["audio_effects"]
+    error = rpc.err("browser.list", uri="query:Synths#Operator")
+    assert error["code"] == -32006 and error["data"]["retry"] is True
+    # Nothing was loaded by the timed-out calls.
+    assert rpc("track.get", track=1)["device_count"] == 1
+    # With a normal budget the same call continues from the cached index and succeeds.
+    control_surface.settings["browser_time_budget_ms"] = 1000
+    result = rpc("browser.load", uri=SATURATOR, track=1)
+    assert result["loaded"]["name"] == "Saturator"
+    assert control_surface.ctx.state["browser_index"]["audio_effects"] is partial and partial.complete is True
+    assert [i["name"] for i in rpc("browser.list", uri="query:Synths#Operator")["items"]] == ["Deep Bass", "FM Pluck"]
+
+
+def test_find_entry_not_found_only_after_full_traversal(rpc, control_surface):
+    error = rpc.err("browser.load", uri="query:Nope", track=1)
+    assert error["code"] == -32000
+    cache = control_surface.ctx.state["browser_index"]
+    assert all(index.complete for index in cache.values()) and len(cache) == 11
+
+
+def test_load_stale_item_invalidates_cache(rpc, control_surface, fake_live, monkeypatch):
+    rpc("browser.search", query="saturator", categories=["audio_effects"])
+    cache_before = control_surface.ctx.state["browser_index"]
+    original = fake_live.browser.load_item
+    calls = []
+
+    def stale_load(item):
+        calls.append(item)
+        raise RuntimeError("Browser item is no longer valid")
+
+    monkeypatch.setattr(type(fake_live.browser), "load_item", lambda self, item: stale_load(item))
+    error = rpc.err("browser.load", uri=SATURATOR, track=1)
+    assert error["code"] == -32004 and error["data"]["retry"] is True
+    assert error["data"]["exception"] == "RuntimeError" and "invalidated" in error["message"]
+    assert len(calls) == 1
+    assert "browser_index" not in control_surface.ctx.state  # cache dropped so the retry re-indexes
+    monkeypatch.setattr(type(fake_live.browser), "load_item", lambda self, item: original(item))
+    result = rpc("browser.load", uri=SATURATOR, track=1)
+    assert result["loaded"]["name"] == "Saturator"
+    assert control_surface.ctx.state["browser_index"] is not cache_before
 
 
 def test_load_after_last_device(rpc):

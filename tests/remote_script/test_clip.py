@@ -94,6 +94,62 @@ def test_clip_set_invalid(rpc):
     assert error["code"] == -32004 and error["data"]["exception"] == "RuntimeError"
 
 
+PUBLIC_QUANTIZATIONS = (
+    "q_global", "q_none", "q_8_bars", "q_4_bars", "q_2_bars", "q_bar", "q_half", "q_half_triplet", "q_quarter",
+    "q_quarter_triplet", "q_eight", "q_eight_triplet", "q_sixteenth", "q_sixteenth_triplet", "q_thirtysecond",
+)
+
+
+def test_launch_quantization_public_names_resolve_to_live_spellings(rpc, fake_live):
+    enum = Live.Clip.ClipLaunchQuantization
+    live_clip = fake_live.song.tracks[1].clip_slots[0].clip
+    # The mock enum carries Ableton's historical misspellings; the public names must still work.
+    assert not hasattr(enum, "q_sixteenth") and hasattr(enum, "q_sixtenth")
+    expected = {"q_sixteenth": enum.q_sixtenth, "q_sixteenth_triplet": enum.q_sixtenth_triplet,
+                "q_thirtysecond": enum.q_thirtytwoth}
+    for name in PUBLIC_QUANTIZATIONS:
+        rpc("clip.set", track=1, slot=0, launch_quantization=name)
+        member = expected[name] if name in expected else getattr(enum, name)
+        assert live_clip.launch_quantization == member, name
+    # The historical spellings are accepted as input too.
+    rpc("clip.set", track=1, slot=0, launch_quantization="q_thirtytwoth")
+    assert live_clip.launch_quantization == enum.q_thirtytwoth
+    error = rpc.err("clip.set", track=1, slot=0, launch_quantization="q_sixtyfourth")
+    assert error["code"] == -32602 and error["data"]["available"] == list(PUBLIC_QUANTIZATIONS)
+
+
+def test_launch_quantization_unsupported_when_live_lacks_member(rpc, monkeypatch):
+    from Live import _core
+    reduced = _core.make_enum("Live.Clip.ClipLaunchQuantization", ("q_global", "q_none", "q_bar"))
+    monkeypatch.setattr(Live.Clip, "ClipLaunchQuantization", reduced)
+    assert rpc("clip.set", track=1, slot=0, launch_quantization="q_bar")["name"] == "Bass 1"
+    error = rpc.err("clip.set", track=1, slot=0, launch_quantization="q_sixteenth")
+    assert error["code"] == -32003
+    assert error["data"]["needs"] == "Live.Clip.ClipLaunchQuantization.q_sixteenth"
+    assert "q_sixtenth" in error["message"]
+    monkeypatch.setattr(Live.Clip, "ClipLaunchQuantization", None)
+    assert rpc.err("clip.set", track=1, slot=0, launch_quantization="q_bar")["code"] == -32003
+
+
+def test_clip_set_rejects_conflicting_pairs_on_unlooped_clips(rpc, fake_live):
+    live_clip = fake_live.song.tracks[1].clip_slots[0].clip
+    error = rpc.err("clip.set", track=1, slot=0, looping=False, loop_start=0.0, loop_end=2.0,
+                    start_marker=0.0, end_marker=2.0)
+    assert error["code"] == -32602 and error["data"]["reason"] == "loop_marker_alias"
+    assert "alias" in error["message"]
+    assert live_clip.looping is True  # rejected before touching Live
+    # A clip that is already unlooped trips the same check without an explicit `looping`.
+    rpc("clip.set", track=1, slot=0, looping=False)
+    assert rpc.err("clip.set", track=1, slot=0, loop_end=2.0, end_marker=2.0)["code"] == -32602
+    # One pair at a time is fine on an unlooped clip ...
+    assert rpc("clip.set", track=1, slot=0, start_marker=1.0, end_marker=3.0)["end_marker"] == 3.0
+    assert rpc("clip.set", track=1, slot=0, loop_start=0.0, loop_end=2.0)["loop_end"] == 2.0
+    # ... and both pairs are independent (and allowed) once the clip loops again.
+    clip = rpc("clip.set", track=1, slot=0, looping=True, loop_start=0.0, loop_end=4.0, start_marker=0.0,
+               end_marker=4.0)
+    assert clip["looping"] is True and clip["loop_end"] == 4.0 and clip["end_marker"] == 4.0
+
+
 def test_clip_set_arrangement_clip(rpc):
     clip = rpc("clip.set", track=0, arrangement_index=0, name="Intro Drums")
     assert clip["name"] == "Intro Drums" and clip["arrangement_index"] == 0

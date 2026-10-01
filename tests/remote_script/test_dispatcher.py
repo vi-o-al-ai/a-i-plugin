@@ -33,10 +33,14 @@ def _returns_scalar(ctx, params):
     return 42
 
 
+def _raises_assertion(ctx, params):
+    raise AssertionError("LOM accessed off main thread (simulated)")
+
+
 @pytest.fixture
 def dispatcher():
     methods = {"t.ok": _ok, "t.rpc": _raises_rpc, "t.bug": _raises_bug, "t.live": _raises_live,
-               "t.none": _returns_none, "t.scalar": _returns_scalar}
+               "t.none": _returns_none, "t.scalar": _returns_scalar, "t.assert": _raises_assertion}
     return Dispatcher(ctx=object(), methods=methods, logger=logging.getLogger("test"))
 
 
@@ -136,6 +140,14 @@ def test_unexpected_exception_is_internal_error(dispatcher):
     assert "boom" in response["error"]["data"]["detail"]
 
 
+def test_assertion_error_is_internal_error_with_id(dispatcher):
+    # An AssertionError must not leave the client waiting for its timeout.
+    response = dispatcher.handle({"jsonrpc": "2.0", "id": "a1", "method": "t.assert"})
+    assert response["id"] == "a1"
+    assert response["error"]["code"] == -32603
+    assert response["error"]["data"]["exception"] == "AssertionError"
+
+
 def test_runtime_error_maps_to_live_error(dispatcher):
     response = dispatcher.handle({"jsonrpc": "2.0", "id": 6, "method": "t.live"})
     assert response["error"]["code"] == -32004
@@ -168,6 +180,24 @@ def test_encode_handles_nan(dispatcher):
     decoded = json.loads(line.decode("utf-8"))
     assert decoded["error"]["code"] == -32603
     assert decoded["id"] == 1
+
+
+def test_encode_handles_lone_surrogate(dispatcher):
+    # A string from Live holding a lone surrogate must not make encode() raise.
+    line = dispatcher.encode({"jsonrpc": "2.0", "id": 2, "result": {"name": "bad \udcff name"}})
+    assert line.endswith(b"\n") and line.count(b"\n") == 1
+    decoded = json.loads(line.decode("utf-8"))
+    assert decoded["id"] == 2 and decoded["result"]["name"].startswith("bad ")
+
+
+def test_request_id_of():
+    from ClaudeLive.dispatcher import request_id_of
+    assert request_id_of({"jsonrpc": "2.0", "id": 5, "method": "x"}) == 5
+    assert request_id_of({"jsonrpc": "2.0", "id": "s", "method": "x"}) == "s"
+    assert request_id_of({"jsonrpc": "2.0", "id": True, "method": "x"}) is None
+    assert request_id_of({"jsonrpc": "2.0", "method": "x"}) is None
+    assert request_id_of(FrameError(errors.PARSE_ERROR, "bad")) is None
+    assert request_id_of("garbage") is None
 
 
 def test_live_rpc_error_to_dict():

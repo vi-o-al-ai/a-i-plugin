@@ -30,6 +30,7 @@ def test_get_overview_shape(rpc):
     assert drums["playing_slot_index"] == -1 and drums["fired_slot_index"] == -1
     assert [c["name"] for c in drums["clips"]] == ["Drums 1", "Drums 2"]
     assert drums["clips"][1]["slot"] == 1
+    assert all(c["note_count"] is None for c in drums["clips"])  # opt-in via include_note_counts
     assert drums["devices"][0]["is_rack"] is True and "chains" in drums["devices"][0]
     assert "parameters" not in drums["devices"][0]
 
@@ -63,6 +64,14 @@ def test_get_overview_flags(rpc):
     assert "devices" not in overview["tracks"][0]
     assert overview["return_tracks"] == []
     assert "devices" not in overview["master"]
+
+
+def test_get_overview_include_note_counts(rpc):
+    overview = rpc("song.get_overview", include_note_counts=True)
+    assert [c["note_count"] for c in overview["tracks"][0]["clips"]] == [10, 8]
+    assert [c["note_count"] for c in overview["tracks"][1]["clips"]] == [5, 4]
+    assert overview["tracks"][3]["clips"][0]["note_count"] is None  # audio clip: always null
+    assert rpc.err("song.get_overview", include_note_counts=1)["code"] == -32602
 
 
 def test_get_overview_include_params(rpc):
@@ -210,8 +219,20 @@ def test_delete_return_track(rpc):
     assert len(rpc("track.get", track=0)["sends"]) == 1
 
 
-def test_delete_master_rejected(rpc):
-    assert rpc.err("song.delete_track", track_type="master", confirm=True)["code"] == -32001
+def test_delete_master_rejected(rpc, fake_live):
+    error = rpc.err("song.delete_track", track_type="master", confirm=True)
+    assert error["code"] == -32001 and error["data"]["reason"] == "master_track"
+    # INVALID_STATE wins over CONFIRM_REQUIRED: the master can never be deleted.
+    assert rpc.err("song.delete_track", track_type="master")["code"] == -32001
+    assert fake_live.song.master_track.name == "Master"
+    assert rpc.err("song.delete_track", track=0, track_type="bus", confirm=True)["code"] == -32602
+
+
+def test_delete_return_track_requires_confirm(rpc):
+    error = rpc.err("song.delete_track", track=1, track_type="return")
+    assert error["code"] == -32002 and error["data"]["target"] == "B-Delay (return 1)"
+    assert rpc("song.delete_track", track=1, track_type="return", confirm=True) == {
+        "deleted": "B-Delay", "track_count": 1, "track_type": "return"}
 
 
 def test_track_not_found_has_count(rpc):

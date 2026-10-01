@@ -19,6 +19,17 @@ def test_track_get_without_children(rpc):
     assert "clips" not in track and "devices" not in track
 
 
+def test_track_get_include_note_counts(rpc):
+    track = rpc("track.get", track=0)
+    assert [c["note_count"] for c in track["clips"]] == [None, None]
+    track = rpc("track.get", track=0, include_note_counts=True)
+    assert [c["note_count"] for c in track["clips"]] == [10, 8]
+    assert rpc("track.get", track=3, include_note_counts=True)["clips"][0]["note_count"] is None  # audio
+    assert rpc.err("track.get", track=0, include_note_counts="yes")["code"] == -32602
+    # Single-clip results always carry the count.
+    assert rpc("clip.get", track=0, slot=0)["note_count"] == 10
+
+
 def test_track_get_with_params(rpc):
     track = rpc("track.get", track=1, include_params=True)
     assert track["devices"][0]["parameters"][0]["name"] == "Device On"

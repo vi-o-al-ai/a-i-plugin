@@ -2,13 +2,13 @@
 from .. import errors, lom
 
 
-def _track_payload(song, ref, include_clips, include_devices, include_params):
+def _track_payload(song, ref, include_clips, include_devices, include_params, include_note_counts=False):
     summary = lom.track_summary(song, ref.track, ref.index, ref.track_type)
     if include_clips:
         clips = []
         for si, slot in enumerate(lom.as_list(lom.safe_get(ref.track, "clip_slots"))):
             if lom.safe_get(slot, "has_clip", False):
-                clips.append(lom.clip_summary(slot.clip, ref.index, si, None))
+                clips.append(lom.clip_summary(slot.clip, ref.index, si, None, include_note_count=include_note_counts))
         summary["clips"] = clips
     if include_devices:
         summary["devices"] = lom.device_entries(ref.track, include_params, depth=1)
@@ -21,7 +21,8 @@ def get(ctx, params):
     return _track_payload(song, ref,
                           lom.get_bool(params, "include_clips", True),
                           lom.get_bool(params, "include_devices", True),
-                          lom.get_bool(params, "include_params", False))
+                          lom.get_bool(params, "include_params", False),
+                          lom.get_bool(params, "include_note_counts", False))
 
 
 def _set_mixer(param, value, key):

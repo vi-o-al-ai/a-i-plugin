@@ -18,14 +18,15 @@ def set_scene(ctx, params):
     if color_index is not lom.MISSING:
         lom.live_set(scene, "color_index", color_index)
     if has_tempo:
+        has_tempo_enabled = lom.has_attr(scene, "tempo_enabled")
         if tempo is None:
-            if hasattr(scene, "tempo_enabled"):
+            if has_tempo_enabled:
                 lom.live_set(scene, "tempo_enabled", False)
             else:
                 lom.live_set(scene, "tempo", -1.0)
         else:
             lom.live_set(scene, "tempo", tempo)
-            if hasattr(scene, "tempo_enabled"):
+            if has_tempo_enabled:
                 lom.live_set(scene, "tempo_enabled", True)
     return lom.scene_summary(song, scene, index)
 

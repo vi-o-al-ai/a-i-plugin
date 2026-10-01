@@ -4,7 +4,8 @@ newline-delimited JSON-RPC on 127.0.0.1 (see docs/PROTOCOL.md).
 Install: copy this folder to
   macOS:   ~/Music/Ableton/User Library/Remote Scripts/ClaudeLive/
   Windows: Documents\\Ableton\\User Library\\Remote Scripts\\ClaudeLive\\
-then select "ClaudeLive" in Preferences > Link, Tempo & MIDI > Control Surface.
+then select "ClaudeLive" in Settings → Link, Tempo & MIDI → Control Surface
+(called Preferences in older Live versions).
 
 Live imports this folder as a package and calls create_instance().
 Python 3.7 (Live 12.0/12.1) and 3.11 (Live 12.3) compatible; stdlib only.

@@ -195,10 +195,24 @@ def _note_ids(params, key="note_ids"):
     return out
 
 
+RANGE_KEYS = ("from_time", "time_span", "from_pitch", "pitch_span")
+
+
+def _clip_target(ref):
+    name = lom.safe_get(ref.clip, "name", "")
+    if ref.slot_index is not None:
+        return "clip '%s' (track %s, slot %d)" % (name, ref.track_index, ref.slot_index)
+    return "arrangement clip '%s' (track %s, arrangement_index %d)" % (name, ref.track_index, ref.arrangement_index)
+
+
 def remove(ctx, params):
     ref = _midi_clip(ctx, params)
     clip = ref.clip
     ids = _note_ids(params)
+    has_range = any(params.get(key) is not None for key in RANGE_KEYS)
+    if ids is None and not has_range:
+        # Neither ids nor a window: this would erase every note of the clip (PROTOCOL.md, notes.remove).
+        lom.require_confirm(params, "notes.remove", "all notes of %s" % _clip_target(ref))
     before = _count(clip)
     if ids is not None:
         if ids:

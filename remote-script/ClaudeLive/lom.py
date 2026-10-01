@@ -175,6 +175,12 @@ def safe_get(obj, name, default=None):
         return default
 
 
+def has_attr(obj, name):
+    """hasattr() for LOM objects: a boost property that raises RuntimeError
+    ("not available on this track") counts as absent instead of propagating."""
+    return safe_get(obj, name, MISSING) is not MISSING
+
+
 def live_call(fn, *args, **kwargs):
     """Call a LOM function, converting its exceptions into LIVE_ERROR."""
     try:
@@ -513,7 +519,10 @@ def note_count(clip):
         return None
 
 
-def clip_summary(clip, track_index, slot=None, arrangement_index=None):
+def clip_summary(clip, track_index, slot=None, arrangement_index=None, include_note_count=True):
+    """ClipSummary (PROTOCOL.md section 6). Counting notes materialises every note of
+    the clip, so list-style methods pass include_note_count=False unless the client
+    asked for `include_note_counts`; note_count is then null."""
     is_midi = bool(safe_get(clip, "is_midi_clip", False))
     is_arr = bool(safe_get(clip, "is_arrangement_clip", arrangement_index is not None))
     summary = {
@@ -537,7 +546,7 @@ def clip_summary(clip, track_index, slot=None, arrangement_index=None):
         "is_triggered": bool(safe_get(clip, "is_triggered", False)),
         "signature_numerator": safe_get(clip, "signature_numerator"),
         "signature_denominator": safe_get(clip, "signature_denominator"),
-        "note_count": note_count(clip) if is_midi else None,
+        "note_count": note_count(clip) if (is_midi and include_note_count) else None,
     }
     summary.update(color_fields(clip))
     return summary
@@ -644,7 +653,8 @@ def parse_device_path(path):
     indexes = []
     for part in parts:
         part = part.strip()
-        if not part.isdigit():
+        # isdecimal(), not isdigit(): "²".isdigit() is True but int("²") raises.
+        if not part.isdecimal():
             raise errors.invalid_params("Device path %r must contain only non-negative integers separated by '/'" % path,
                                         parameter="path")
         indexes.append(int(part))
@@ -975,7 +985,7 @@ def transport(song):
 
 
 def scale_supported(song):
-    return hasattr(song, "scale_name") and hasattr(song, "root_note")
+    return has_attr(song, "scale_name") and has_attr(song, "root_note")
 
 
 def scale(song):

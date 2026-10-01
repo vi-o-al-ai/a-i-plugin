@@ -27,9 +27,27 @@ def test_set_steps_then_get_roundtrip(rpc):
                              {"time": 2.0, "value": 0.8}, {"time": 3.0, "value": 0.8}]
 
 
-def test_set_defaults_to_steps_and_sorts_points(rpc):
-    rpc("automation.set", points=[{"time": 2, "value": 0.8}, {"time": 0, "value": 0.2}], **FREQ)
-    assert _values(rpc, 1.0) == [0.2, 0.2, 0.8, 0.8]
+def test_set_defaults_to_ramp_and_sorts_points(rpc):
+    result = rpc("automation.set", points=[{"time": 2, "value": 0.8}, {"time": 0, "value": 0.2}], **FREQ)
+    assert result["mode"] == "ramp" and result["exists"] is True
+    assert result["inserted"] == 33  # 32 steps of 0.0625 over the 2-beat ramp + the final hold
+    assert _values(rpc, 1.0) == pytest.approx([0.2, 0.5, 0.8, 0.8])
+
+
+def test_set_result_reports_mode(rpc):
+    assert rpc("automation.set", points=[{"time": 0, "value": 0.2}], mode="steps", **FREQ)["mode"] == "steps"
+    assert rpc("automation.set", points=[{"time": 0, "value": 0.2}], mode="ramp", **FREQ)["mode"] == "ramp"
+
+
+def test_set_too_many_steps(rpc):
+    points = [{"time": i * 0.01, "value": 0.5} for i in range(2001)]
+    error = rpc.err("automation.set", points=points, mode="steps", **FREQ)
+    assert error["code"] == -32005 and error["data"] == {"limit": 2000, "got": 2001}
+    # A ramp that expands into too many steps is rejected before anything is inserted.
+    error = rpc.err("automation.set", points=[{"time": 0, "value": 0}, {"time": 4, "value": 1}], mode="ramp",
+                    resolution=0.001, **FREQ)
+    assert error["code"] == -32005 and error["data"]["limit"] == 2000 and error["data"]["got"] > 2000
+    assert rpc("automation.get", **FREQ)["exists"] is False
 
 
 def test_set_ramp_produces_intermediate_values(rpc):
@@ -129,5 +147,6 @@ def test_arrangement_clip_envelopes(rpc):
 def test_get_too_many_points(rpc):
     rpc("automation.set", points=[{"time": 0, "value": 0.2}], **FREQ)
     error = rpc.err("automation.get", resolution=0.001, time_span=100.0, **FREQ)
-    assert error["code"] == -32005 and error["data"]["limit"] == 10000
+    assert error["code"] == -32005 and error["data"]["limit"] == 2000
+    assert len(rpc("automation.get", resolution=0.01, time_span=20.0, **FREQ)["points"]) == 2000
     assert rpc.err("automation.get", resolution=0, **FREQ)["code"] == -32602

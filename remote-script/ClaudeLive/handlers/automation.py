@@ -5,9 +5,13 @@ import Live
 
 from .. import errors, lom
 
-MAX_POINTS = 10000
+# Every resulting step is one undoable insert_step call on the main thread, and every
+# sample one value_at_time call; 2000 keeps a single request inside the tick budget class.
+MAX_POINTS = 2000
+MAX_SAMPLES = 2000
 MIN_RESOLUTION = 1.0e-3
 MODES = ("steps", "ramp")
+DEFAULT_MODE = "ramp"
 
 
 def _target(ctx, params, require_parameter=True):
@@ -57,8 +61,8 @@ def get(ctx, params):
     # Sample [from_time, from_time + time_span) so the clip end itself is not read.
     count = int(math.ceil(time_span / resolution - 1.0e-9)) if time_span > 0 else 1
     count = max(1, count)
-    if count > MAX_POINTS:
-        raise errors.too_large(MAX_POINTS, count, "sample points (raise 'resolution' or shrink 'time_span')")
+    if count > MAX_SAMPLES:
+        raise errors.too_large(MAX_SAMPLES, count, "sample points (raise 'resolution' or shrink 'time_span')")
     points = []
     for i in range(count):
         t = from_time + i * resolution
@@ -110,7 +114,7 @@ def set_automation(ctx, params):
     ref, _dref, pref = _target(ctx, params)
     clip = ref.clip
     param = pref.param
-    mode = lom.get_choice(params, "mode", MODES, "steps")
+    mode = lom.get_choice(params, "mode", MODES, DEFAULT_MODE)
     resolution = lom.get_float(params, "resolution", 0.0625, minimum=MIN_RESOLUTION)
     low = float(lom.safe_get(param, "min", 0.0))
     high = float(lom.safe_get(param, "max", 1.0))
@@ -121,16 +125,8 @@ def set_automation(ctx, params):
     if quantized:
         points = [(t, float(round(v))) for t, v in points]
 
-    envelope = _envelope(clip, param)
-    if envelope is None:
-        create = lom.safe_get(clip, "create_automation_envelope")
-        if create is None:
-            raise errors.unsupported("Clip.create_automation_envelope", ctx.version["string"])
-        envelope = lom.live_call(create, param)
-        if envelope is None:
-            raise errors.invalid_state("no_envelope", "Live could not create an automation envelope for '%s' on this clip"
-                                       % pref.name)
-
+    # Expand into steps and validate the size *before* touching the clip, so a rejected
+    # request leaves no empty envelope behind.
     end = _clip_end(clip)
     last_time = points[-1][0]
     if end <= last_time:
@@ -161,11 +157,23 @@ def set_automation(ctx, params):
                 steps.append((start, step_length, value))
     if len(steps) > MAX_POINTS:
         raise errors.too_large(MAX_POINTS, len(steps), "automation steps (raise 'resolution')")
+
+    envelope = _envelope(clip, param)
+    if envelope is None:
+        create = lom.safe_get(clip, "create_automation_envelope")
+        if create is None:
+            raise errors.unsupported("Clip.create_automation_envelope", ctx.version["string"])
+        envelope = lom.live_call(create, param)
+        if envelope is None:
+            raise errors.invalid_state("no_envelope", "Live could not create an automation envelope for '%s' on this clip"
+                                       % pref.name)
     inserted = 0
     for t, length, v in steps:
         lom.live_call(envelope.insert_step, t, length, v)
         inserted += 1
     _re_enable(param)
+    # Quantized parameters are always written as steps (a ramp between discrete values
+    # makes no sense), and the result says so.
     return {"inserted": inserted, "exists": True, "mode": "steps" if quantized else mode}
 
 

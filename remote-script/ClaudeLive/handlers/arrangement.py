@@ -2,10 +2,11 @@
 from .. import errors, lom
 
 CUE_EPSILON = 1.0e-3
+PLAYING_MESSAGE = "Stop playback first: creating or deleting a locator moves the playhead."
 
 
-def _arrangement_clips(track, track_index):
-    return [lom.clip_summary(clip, track_index, None, i)
+def _arrangement_clips(track, track_index, include_note_counts=False):
+    return [lom.clip_summary(clip, track_index, None, i, include_note_count=include_note_counts)
             for i, clip in enumerate(lom.as_list(lom.safe_get(track, "arrangement_clips")))]
 
 
@@ -16,11 +17,12 @@ def _locators(song):
 def get_overview(ctx, params):
     song = ctx.song()
     include_clips = lom.get_bool(params, "include_clips", True)
+    include_note_counts = lom.get_bool(params, "include_note_counts", False)
     tracks = []
     for i, track in enumerate(lom.as_list(song.tracks)):
         entry = {"index": i, "name": lom.safe_get(track, "name", "")}
         if include_clips:
-            entry["clips"] = _arrangement_clips(track, i)
+            entry["clips"] = _arrangement_clips(track, i, include_note_counts)
         else:
             entry["clip_count"] = len(lom.as_list(lom.safe_get(track, "arrangement_clips")))
         tracks.append(entry)
@@ -37,7 +39,8 @@ def get_overview(ctx, params):
 def get_clips(ctx, params):
     song = ctx.song()
     ref = lom.track_from_params(song, params)
-    return {"clips": _arrangement_clips(ref.track, ref.index)}
+    include_note_counts = lom.get_bool(params, "include_note_counts", False)
+    return {"clips": _arrangement_clips(ref.track, ref.index, include_note_counts)}
 
 
 def add_clip_from_slot(ctx, params):
@@ -53,10 +56,15 @@ def add_clip_from_slot(ctx, params):
     if not lom.safe_get(slot, "has_clip", False):
         raise errors.invalid_state("slot_empty", "Slot %d on %s is empty" % (
             slot_index, lom.track_label(ref.track, ref.index, ref.track_type)), track=ref.index, slot=slot_index)
+    clip = slot.clip
+    if delete_source:
+        # Deleting the session clip afterwards is destructive (PROTOCOL.md section 7).
+        lom.require_confirm(params, "arrangement.add_clip_from_slot",
+                            "the source clip '%s' (track %s, slot %d), deleted after copying it to the arrangement" % (
+                                lom.safe_get(clip, "name", ""), ref.index, slot_index))
     duplicate = lom.safe_get(ref.track, "duplicate_clip_to_arrangement")
     if duplicate is None:
         raise errors.unsupported("Track.duplicate_clip_to_arrangement (Live 11+)", ctx.version["string"])
-    clip = slot.clip
     before = lom.as_list(lom.safe_get(ref.track, "arrangement_clips"))
     new_clip = lom.live_call(duplicate, clip, time_value)
     after = lom.as_list(lom.safe_get(ref.track, "arrangement_clips"))
@@ -87,23 +95,30 @@ def _cue_at(song, time_value):
     return None, None
 
 
+def _require_stopped(song):
+    """Live only offers "toggle a cue at the playhead", so the script has to move the
+    playhead. While playing that relocates playback (and the toggle may land at a
+    quantised time), so refuse (PROTOCOL.md section 7)."""
+    if bool(lom.safe_get(song, "is_playing", False)):
+        raise errors.invalid_state("transport_running", PLAYING_MESSAGE)
+
+
 def set_locator(ctx, params):
     song = ctx.song()
     time_value = lom.get_float(params, "time", minimum=0.0)
     name = lom.get_str(params, "name", None)
     cue, index = _cue_at(song, time_value)
     if cue is None:
-        was_playing = bool(lom.safe_get(song, "is_playing", False))
+        _require_stopped(song)
         previous = lom.safe_get(song, "current_song_time", 0.0)
         lom.live_set(song, "current_song_time", time_value)
         try:
             lom.live_call(song.set_or_delete_cue)
         finally:
-            if not was_playing:
-                try:
-                    song.current_song_time = previous
-                except Exception:
-                    pass
+            try:
+                song.current_song_time = previous
+            except Exception:
+                pass
         cue, index = _cue_at(song, time_value)
         if cue is None:
             raise errors.LiveRpcError(errors.LIVE_ERROR, "Live did not create a locator at %s" % time_value,
@@ -123,7 +138,7 @@ def delete_locator(ctx, params):
     name = lom.safe_get(cue, "name", "")
     cue_time = float(lom.safe_get(cue, "time", 0.0))
     count_before = len(cues)
-    was_playing = bool(lom.safe_get(song, "is_playing", False))
+    _require_stopped(song)
     previous = lom.safe_get(song, "current_song_time", 0.0)
     try:
         # Selecting the cue (playhead on its time) makes set_or_delete_cue delete it.
@@ -135,11 +150,10 @@ def delete_locator(ctx, params):
                 lom.live_call(jump)
                 lom.live_call(song.set_or_delete_cue)
     finally:
-        if not was_playing:
-            try:
-                song.current_song_time = previous
-            except Exception:
-                pass
+        try:
+            song.current_song_time = previous
+        except Exception:
+            pass
     if len(lom.as_list(lom.safe_get(song, "cue_points"))) >= count_before:
         raise errors.LiveRpcError(errors.LIVE_ERROR, "Live did not delete locator '%s' at %s" % (name, cue_time),
                                   {"exception": "RuntimeError", "detail": "set_or_delete_cue removed no cue point"})

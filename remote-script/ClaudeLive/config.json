@@ -3,5 +3,6 @@
   "port": 9892,
   "log_level": "INFO",
   "max_requests_per_tick": 32,
-  "max_tick_ms": 50
+  "max_tick_ms": 50,
+  "dev_mode": false
 }

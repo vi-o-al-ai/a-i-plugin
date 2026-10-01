@@ -32,6 +32,9 @@ TEST_CONFIG = {
     "log_level": "DEBUG",
     "max_requests_per_tick": 32,
     "max_tick_ms": 1000,  # never trip the time budget in tests unless a test lowers it
+    "dev_mode": False,
+    "queue_max": 256,
+    "max_connections": 8,
     "max_line_bytes": 4 * 1024 * 1024,
     "browser_time_budget_ms": 1000,
     "browser_cache_ttl_s": 60,
@@ -65,7 +68,9 @@ def test_config(tmp_path):
 
 
 @pytest.fixture
-def control_surface(fake_live, test_config, monkeypatch):
+def control_surface(fake_live, test_config, monkeypatch, tmp_path):
+    # sys.describe_api writes under ~/.claude-live; never let a test touch the real home.
+    monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(config_module, "load_config", lambda path=None: dict(test_config))
     c_instance = factory.FakeCInstance(fake_live.song)
     surface = package.create_instance(c_instance)
@@ -184,6 +189,8 @@ class TcpClient(object):
                 chunk = self.sock.recv(65536)
             except socket.timeout:
                 continue
+            except ConnectionError:
+                return None  # reset by the server (e.g. refused for max_connections): same as EOF
             if not chunk:
                 return None
             self.buffer += chunk

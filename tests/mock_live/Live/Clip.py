@@ -1,9 +1,11 @@
 """Live.Clip: clips, the Live 11+ note API, and automation envelopes."""
 from ._core import LomObject, make_enum, color_for_index, nearest_color_index, check_color_index, check_number
 
+# Ableton's own member spellings, including the historical misspellings the real
+# enum carries (q_sixtenth, q_thirtytwoth); the script maps the public names onto them.
 ClipLaunchQuantization = make_enum("Live.Clip.ClipLaunchQuantization", (
     "q_global", "q_none", "q_8_bars", "q_4_bars", "q_2_bars", "q_bar", "q_half", "q_half_triplet", "q_quarter",
-    "q_quarter_triplet", "q_eight", "q_eight_triplet", "q_sixteenth", "q_sixteenth_triplet", "q_thirtysecond"))
+    "q_quarter_triplet", "q_eight", "q_eight_triplet", "q_sixtenth", "q_sixtenth_triplet", "q_thirtytwoth"))
 LaunchMode = make_enum("Live.Clip.LaunchMode", ("trigger", "gate", "toggle", "repeat"))
 GridQuantization = make_enum("Live.Clip.GridQuantization", (
     "no_grid", "g_thirtysecond", "g_sixteenth", "g_eighth", "g_quarter", "g_half", "g_bar", "g_2_bars",

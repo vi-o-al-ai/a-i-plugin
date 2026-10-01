@@ -1,58 +1,103 @@
 """Localhost TCP server. Runs entirely on daemon threads and never touches the LOM.
 
-- One accept thread; one reader thread per connection.
+- One accept thread; one reader thread and one writer thread per connection.
 - Reader threads split the byte stream on "\\n", parse JSON and push
-  (connection, request_or_FrameError) onto a queue.Queue. The main-thread tick
-  (ClaudeLive.py) drains that queue.
-- send(conn, line) is called from the main thread and is serialised per connection.
+  (connection, request_or_FrameError) onto a *bounded* queue.Queue. When the
+  queue is full they block (back-pressure through TCP) instead of growing memory.
+  The main-thread tick (ClaudeLive.py) drains that queue.
+- send(conn, line) is called from the main thread and only enqueues the line on
+  the connection's outbox; the connection's writer thread does the blocking
+  sendall(). A client that stops reading can therefore never stall Live's UI.
+- At most `max_connections` clients are served; extra connections are closed
+  right after accept.
 """
 import json
+import queue
 import socket
 import threading
 
 from . import errors
 
 RECV_SIZE = 65536
-SOCKET_TIMEOUT = 5.0  # seconds; keeps reader threads responsive and bounds sendall()
+SOCKET_TIMEOUT = 5.0  # seconds; keeps reader/writer threads responsive
+OUTBOX_MAX = 1024  # pending response lines per connection before the client is dropped
+QUEUE_PUT_TIMEOUT = 0.5  # seconds between stop-flag checks while the inbox is full
+WRITER_JOIN_TIMEOUT = 0.5  # seconds close() waits for the writer thread
+DEFAULT_MAX_CONNECTIONS = 8
 
 
 class Connection(object):
-    """One accepted client socket."""
+    """One accepted client socket with its own writer thread."""
 
     _counter = 0
     _counter_lock = threading.Lock()
 
-    def __init__(self, sock, address):
+    def __init__(self, sock, address, start_writer=True):
         with Connection._counter_lock:
             Connection._counter += 1
             self.id = Connection._counter
         self.sock = sock
         self.address = address
         self.closed = False
-        self._send_lock = threading.Lock()
         self._close_lock = threading.Lock()
+        self.outbox = queue.Queue(maxsize=OUTBOX_MAX)
+        self.lines_sent = 0
+        self._writer = None
+        if start_writer:
+            self._writer = threading.Thread(
+                target=self._write_loop, name="ClaudeLive-writer-%d" % self.id, daemon=True)
+            self._writer.start()
+
+    # ---- main-thread side -------------------------------------------------
 
     def send_line(self, data):
-        """Write one framed line (bytes, already newline-terminated). Thread-safe."""
+        """Queue one framed line (bytes, newline-terminated). Never blocks on the socket."""
         if self.closed:
             return False
         try:
-            with self._send_lock:
-                self.sock.sendall(data)
+            self.outbox.put_nowait(data)
             return True
-        except (OSError, socket.error, ValueError):
+        except queue.Full:
+            # The client has stopped reading; it is not coming back for these.
             self.close()
             return False
 
+    # ---- writer thread ----------------------------------------------------
+
+    def _write_loop(self):
+        while not self.closed:
+            try:
+                data = self.outbox.get(timeout=QUEUE_PUT_TIMEOUT)
+            except queue.Empty:
+                continue
+            if data is None:  # close() sentinel
+                break
+            try:
+                self.sock.sendall(data)
+                self.lines_sent += 1
+            except (OSError, socket.error, ValueError):
+                self.close()
+                break
+
+    # ---- lifecycle --------------------------------------------------------
+
     def close(self):
+        """Idempotent. Safe against a concurrent writer: flag -> shutdown -> sentinel -> join -> close."""
         with self._close_lock:
             if self.closed:
                 return
             self.closed = True
         try:
-            self.sock.shutdown(socket.SHUT_RDWR)
+            self.sock.shutdown(socket.SHUT_RDWR)  # wakes a blocked recv()/sendall()
         except (OSError, socket.error):
             pass
+        try:
+            self.outbox.put_nowait(None)
+        except queue.Full:
+            pass  # the writer checks `closed` after its current line
+        writer = self._writer
+        if writer is not None and writer is not threading.current_thread():
+            writer.join(WRITER_JOIN_TIMEOUT)
         try:
             self.sock.close()
         except (OSError, socket.error):
@@ -65,19 +110,22 @@ class Connection(object):
 class TCPServer(object):
     """Newline-delimited JSON listener bound to 127.0.0.1."""
 
-    def __init__(self, host, port, inbox, logger, max_line_bytes=4 * 1024 * 1024):
+    def __init__(self, host, port, inbox, logger, max_line_bytes=4 * 1024 * 1024,
+                 max_connections=DEFAULT_MAX_CONNECTIONS):
         self.host = host
         self.requested_port = port
         self.port = None
         self.inbox = inbox
         self.logger = logger
         self.max_line_bytes = max_line_bytes
+        self.max_connections = max(1, int(max_connections))
         self.running = False
         self._listener = None
         self._accept_thread = None
         self._connections = {}
         self._connections_lock = threading.Lock()
         self.lines_received = 0
+        self.connections_refused = 0
 
     # ---- lifecycle -------------------------------------------------------
 
@@ -131,10 +179,14 @@ class TCPServer(object):
         with self._connections_lock:
             return len(self._connections)
 
+    def connections(self):
+        with self._connections_lock:
+            return list(self._connections.values())
+
     # ---- main-thread entry point ---------------------------------------
 
     def send(self, conn, data):
-        """Send one encoded response line to a connection (duck-typed: needs send_line)."""
+        """Hand one encoded response line to a connection's outbox (duck-typed: needs send_line)."""
         if isinstance(data, str):
             data = data.encode("utf-8")
         try:
@@ -164,6 +216,17 @@ class TCPServer(object):
                 except (OSError, socket.error):
                     pass
                 break
+            with self._connections_lock:
+                at_capacity = len(self._connections) >= self.max_connections
+            if at_capacity:
+                self.connections_refused += 1
+                self.logger.warning("refusing connection from %r: already serving %d clients (max_connections)",
+                                    address, self.max_connections)
+                try:
+                    sock.close()
+                except (OSError, socket.error):
+                    pass
+                continue
             try:
                 sock.settimeout(SOCKET_TIMEOUT)
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
@@ -171,6 +234,11 @@ class TCPServer(object):
                 pass
             conn = Connection(sock, address)
             with self._connections_lock:
+                # close_all() clears `running` before it takes this lock, so a connection
+                # accepted during shutdown is never left registered behind its back.
+                if not self.running:
+                    conn.close()
+                    break
                 self._connections[conn.id] = conn
             self.logger.info("client connected: %r", conn)
             reader = threading.Thread(
@@ -178,7 +246,14 @@ class TCPServer(object):
             reader.start()
 
     def _push(self, conn, payload):
-        self.inbox.put((conn, payload))
+        """Queue a request; block (with back-pressure) while the inbox is full."""
+        while self.running and not conn.closed:
+            try:
+                self.inbox.put((conn, payload), timeout=QUEUE_PUT_TIMEOUT)
+                return True
+            except queue.Full:
+                continue
+        return False
 
     def _reader_loop(self, conn):
         buf = bytearray()

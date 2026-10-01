@@ -174,8 +174,21 @@ def test_notes_remove_by_range(rpc):
     assert [n["pitch"] for n in rpc("notes.get", **BASS)["notes"]] == [36, 36]
 
 
-def test_notes_remove_all_by_default(rpc):
-    assert rpc("notes.remove", **BASS) == {"removed": 5, "note_count": 0}
+def test_notes_remove_all_requires_confirm(rpc):
+    error = rpc.err("notes.remove", **BASS)
+    assert error["code"] == -32002
+    assert error["data"]["method"] == "notes.remove" and "Bass 1" in error["data"]["target"]
+    assert rpc("notes.get", **BASS)["count"] == 5
+    assert rpc.err("notes.remove", confirm="yes", **BASS)["code"] == -32002
+    assert rpc("notes.remove", confirm=True, **BASS) == {"removed": 5, "note_count": 0}
+
+
+def test_notes_remove_with_selector_needs_no_confirm(rpc):
+    # Any range parameter or note_ids narrows the removal, so no confirm is required.
+    assert rpc("notes.remove", from_pitch=43, **BASS) == {"removed": 1, "note_count": 4}
+    assert rpc("notes.remove", time_span=1.0, **BASS) == {"removed": 0, "note_count": 4}  # window starts at -8192
+    assert rpc("notes.remove", from_time=0.0, time_span=1.0, **BASS) == {"removed": 1, "note_count": 3}
+    assert rpc("notes.remove", note_ids=[], **BASS) == {"removed": 0, "note_count": 3}
 
 
 def test_notes_replace(rpc):

@@ -3,11 +3,35 @@ import Live
 
 from .. import errors, lom
 
-LAUNCH_QUANTIZATIONS = (
-    "q_global", "q_none", "q_8_bars", "q_4_bars", "q_2_bars", "q_bar", "q_half", "q_half_triplet",
-    "q_quarter", "q_quarter_triplet", "q_eight", "q_eight_triplet", "q_sixteenth", "q_sixteenth_triplet",
-    "q_thirtysecond",
+# Public launch-quantization names (PROTOCOL.md section 7, clip.set) mapped to the
+# member spellings Live has used, in the order they are tried. Ableton's own enum
+# historically carries misspellings (q_sixtenth, q_thirtytwoth); the public names
+# are the correct spellings and the script resolves them to whatever exists.
+LAUNCH_QUANTIZATION_CANDIDATES = (
+    ("q_global", ("q_global",)),
+    ("q_none", ("q_none",)),
+    ("q_8_bars", ("q_8_bars",)),
+    ("q_4_bars", ("q_4_bars",)),
+    ("q_2_bars", ("q_2_bars",)),
+    ("q_bar", ("q_bar",)),
+    ("q_half", ("q_half",)),
+    ("q_half_triplet", ("q_half_triplet",)),
+    ("q_quarter", ("q_quarter",)),
+    ("q_quarter_triplet", ("q_quarter_triplet",)),
+    ("q_eight", ("q_eight", "q_eighth")),
+    ("q_eight_triplet", ("q_eight_triplet", "q_eighth_triplet")),
+    ("q_sixteenth", ("q_sixteenth", "q_sixtenth")),
+    ("q_sixteenth_triplet", ("q_sixteenth_triplet", "q_sixtenth_triplet")),
+    ("q_thirtysecond", ("q_thirtysecond", "q_thirtytwoth")),
 )
+LAUNCH_QUANTIZATIONS = tuple(name for name, _candidates in LAUNCH_QUANTIZATION_CANDIDATES)
+_LAUNCH_QUANTIZATION_MAP = dict(LAUNCH_QUANTIZATION_CANDIDATES)
+# Accept the historical spellings as input too, so a client that read the enum back
+# from Live can send the same name.
+_LAUNCH_QUANTIZATION_ALIASES = {}
+for _name, _candidates in LAUNCH_QUANTIZATION_CANDIDATES:
+    for _candidate in _candidates:
+        _LAUNCH_QUANTIZATION_ALIASES[_candidate] = _name
 
 
 def _session_slot(song, params):
@@ -49,17 +73,26 @@ def get(ctx, params):
 
 
 def _launch_quantization(value):
+    """Resolve a public launch-quantization name to the enum member Live exposes."""
     enum_cls = getattr(Live.Clip, "ClipLaunchQuantization", None)
     if enum_cls is None:
         raise errors.unsupported("Live.Clip.ClipLaunchQuantization", "this Live build")
     key = value.strip().lower().replace(" ", "_").replace("-", "_")
     if not key.startswith("q_"):
         key = "q_" + key
-    if key not in LAUNCH_QUANTIZATIONS or not hasattr(enum_cls, key):
+    public = _LAUNCH_QUANTIZATION_ALIASES.get(key)
+    if public is None:
         raise errors.invalid_params("launch_quantization must be one of %s (got %r)" % (
             ", ".join(LAUNCH_QUANTIZATIONS), value), parameter="launch_quantization",
             available=list(LAUNCH_QUANTIZATIONS))
-    return getattr(enum_cls, key)
+    for candidate in _LAUNCH_QUANTIZATION_MAP[public]:
+        member = getattr(enum_cls, candidate, None)
+        if member is not None:
+            return member
+    raise errors.unsupported(
+        "Live.Clip.ClipLaunchQuantization.%s" % public, "this Live build",
+        "This Live build has no launch quantization named %s (tried %s)" % (
+            public, ", ".join(_LAUNCH_QUANTIZATION_MAP[public])))
 
 
 def _apply_pair(clip, end_attr, end_value, start_attr, start_value):
@@ -99,6 +132,18 @@ def set_clip(ctx, params):
     if start_marker is not None and end_marker is not None and start_marker >= end_marker:
         raise errors.invalid_params("start_marker (%s) must be less than end_marker (%s)" % (start_marker, end_marker),
                                     parameter="start_marker")
+    # On an unlooped clip the LOM defines loop_start/loop_end as "clip start/end", i.e.
+    # they alias start_marker/end_marker: writing both pairs would silently let the
+    # marker writes overwrite the loop writes. Reject that up front (PROTOCOL.md, clip.set).
+    has_loop_pair = loop_start is not None or loop_end is not None
+    has_marker_pair = start_marker is not None or end_marker is not None
+    if has_loop_pair and has_marker_pair:
+        effective_looping = looping if looping is not None else bool(lom.safe_get(clip, "looping", False))
+        if not effective_looping:
+            raise errors.invalid_params(
+                "On an unlooped clip Live aliases loop_start/loop_end to start_marker/end_marker, so set either "
+                "the loop_* pair or the *_marker pair, not both (looping is false for this clip)",
+                parameter="loop_start", reason="loop_marker_alias")
     quant_value = _launch_quantization(launch_quantization) if launch_quantization is not None else None
 
     if name is not None:

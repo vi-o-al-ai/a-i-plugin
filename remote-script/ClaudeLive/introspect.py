@@ -115,12 +115,10 @@ def _describe_class(qualname, cls, out, depth=0):
         _describe_class("%s.%s" % (qualname, member), obj, out, depth + 1)
 
 
-def describe_api(path=None, classes=None, extra_modules=None):
-    """Write the Markdown dump and return {"path", "classes", "bytes"}."""
+def render_api(classes=None, extra_modules=None):
+    """Return (markdown_text, class_count) for the Live module (+ _Framework.ControlSurface)."""
     import Live
 
-    if path is None or not str(path).strip():
-        path = default_dump_path()
     wanted = None
     if classes:
         wanted = set(str(c).lower() for c in classes)
@@ -150,10 +148,25 @@ def describe_api(path=None, classes=None, extra_modules=None):
                 continue
             _describe_class(qualname, cls, out)
             count += 1
-    text = "".join(out)
-    directory = os.path.dirname(os.path.abspath(path))
+    return "".join(out), count
+
+
+def write_dump(path, text):
+    """Write `text` to `path` (creating missing directories) and return the absolute path.
+    Raises OSError/IOError when the location is not writable."""
+    path = os.path.abspath(path)
+    directory = os.path.dirname(path)
     if directory and not os.path.isdir(directory):
         os.makedirs(directory)
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(text)
-    return {"path": os.path.abspath(path), "classes": count, "bytes": len(text.encode("utf-8"))}
+    return path
+
+
+def describe_api(path=None, classes=None, extra_modules=None):
+    """Render and write the Markdown dump; return {"path", "classes", "bytes"}."""
+    if path is None or not str(path).strip():
+        path = default_dump_path()
+    text, count = render_api(classes, extra_modules)
+    written = write_dump(path, text)
+    return {"path": written, "classes": count, "bytes": len(text.encode("utf-8"))}

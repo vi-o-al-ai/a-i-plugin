@@ -20,8 +20,7 @@ URI_HINTS = (
     ("userlibrary", "user_library"), ("samples", "samples"), ("clips", "clips"),
 )
 MAX_DEPTH = 12
-FIND_BUDGET_S = 2.0
-FIND_CHUNK = 2000
+FIND_CHUNK = 2000  # nodes per advance() slice while resolving a uri; the time budget is the real bound
 
 
 class Entry(object):
@@ -130,6 +129,10 @@ def _budget_s(ctx):
     return float(ctx.config.get("browser_time_budget_ms", 40) or 40) / 1000.0
 
 
+def _invalidate_cache(ctx):
+    ctx.state.pop("browser_index", None)
+
+
 def _validate_category(name):
     if name not in CATEGORIES:
         raise errors.invalid_params("Unknown browser category %r (available: %s)" % (name, ", ".join(CATEGORIES)),
@@ -170,22 +173,23 @@ def search(ctx, params):
     max_nodes = lom.get_int(params, "max_nodes", 5000, minimum=1)
     deadline = time.perf_counter() + _budget_s(ctx)
 
+    # Resumable: `visited` and `max_nodes` count only nodes traversed *in this call*;
+    # entries already in the cache are always scanned for matches. `truncated` means
+    # some requested category is not fully indexed yet, so the same call should be
+    # repeated (the index is cached and continues where it stopped).
     visited = 0
     truncated = False
     matches = []
     for category in categories:
-        if visited >= max_nodes:
-            truncated = True
-            break
         index = _index_for(ctx, category)
         if not index.complete:
-            index.advance(deadline, max_nodes - visited)
-        allowance = max_nodes - visited
-        scanned = index.entries[:allowance]
-        visited += len(scanned)
-        if len(index.entries) > allowance or not index.complete:
-            truncated = True
-        for entry in scanned:
+            if visited >= max_nodes:
+                truncated = True
+            else:
+                visited += index.advance(deadline, max_nodes - visited)
+                if not index.complete:
+                    truncated = True
+        for entry in index.entries:
             if loadable_only and not entry.is_loadable:
                 continue
             rank = _rank(entry.name_lower, query)
@@ -211,14 +215,28 @@ def _ordered_categories(uri):
 
 
 def _find_entry(ctx, uri, categories=None):
-    deadline = time.perf_counter() + FIND_BUDGET_S
+    """Resolve a browser uri through the cached per-root indexes.
+
+    Bounded by the same per-tick budget as browser.search (PROTOCOL.md section 3,
+    -32006). When the budget runs out before every candidate root is indexed, the
+    progress stays cached and TIMEOUT {"retry": true} tells the client to call again.
+    Returns None only when every root is fully indexed and the uri is in none of them.
+    """
+    deadline = time.perf_counter() + _budget_s(ctx)
+    visited = 0
     for category in categories or _ordered_categories(uri):
         index = _index_for(ctx, category)
         entry = index.by_uri.get(uri)
         if entry is not None:
             return entry
-        while not index.complete and time.perf_counter() < deadline:
-            index.advance(deadline, FIND_CHUNK)
+        while not index.complete:
+            if time.perf_counter() >= deadline:
+                raise errors.LiveRpcError(
+                    errors.TIMEOUT,
+                    "Browser index for '%s' is still being built (%d nodes visited this call); "
+                    "call again to continue resolving '%s'" % (category, visited, uri),
+                    {"retry": True, "nodes_visited": visited, "category": category, "uri": uri})
+            visited += index.advance(deadline, FIND_CHUNK)
             entry = index.by_uri.get(uri)
             if entry is not None:
                 return entry
@@ -306,7 +324,7 @@ def load(ctx, params):
                 raise
             except Exception:
                 pass
-        if insert_modes is not None and track_view is not None and hasattr(track_view, "device_insert_mode"):
+        if insert_modes is not None and track_view is not None and lom.has_attr(track_view, "device_insert_mode"):
             try:
                 restore_mode = track_view.device_insert_mode
                 track_view.device_insert_mode = insert_modes.selected_right
@@ -317,10 +335,20 @@ def load(ctx, params):
                 changed_mode = False
     try:
         lom.live_call(browser.load_item, item)
+    except errors.LiveRpcError as exc:
+        if exc.code == errors.LIVE_ERROR:
+            # Most likely a stale BrowserItem (the browser refreshed since the index was
+            # built). Drop the cache so the retry re-indexes and gets a fresh item.
+            _invalidate_cache(ctx)
+            data = dict(exc.data or {})
+            data["retry"] = True
+            raise errors.LiveRpcError(exc.code, exc.message + " (browser cache invalidated; call again)", data)
+        raise
     finally:
         if changed_mode:
+            # Restore whatever the user had, not blindly `default`.
             try:
-                track_view.device_insert_mode = getattr(insert_modes, "default", restore_mode)
+                track_view.device_insert_mode = restore_mode
             except Exception:
                 pass
     after = lom.as_list(lom.safe_get(track, "devices"))

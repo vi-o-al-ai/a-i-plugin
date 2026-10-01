@@ -1,8 +1,10 @@
 """ClaudeLive control surface: owns the socket server, the main-thread tick and the dispatcher.
 
 Threading model (PROTOCOL.md section 4): daemon threads only move bytes and parsed
-JSON into `inbox`; the tick scheduled through the ControlSurface framework drains
-it on Live's main thread and is the only code path that touches the LOM.
+JSON into the bounded `inbox`; the tick scheduled through the ControlSurface
+framework drains it on Live's main thread and is the only code path that touches
+the LOM. Responses are handed to per-connection writer threads, so the tick never
+blocks on a socket.
 """
 import queue
 import time
@@ -11,8 +13,9 @@ import traceback
 from _Framework.ControlSurface import ControlSurface
 
 from . import config as config_module
+from . import errors
 from . import logger as logger_module
-from .dispatcher import Dispatcher
+from .dispatcher import Dispatcher, error_response, request_id_of
 from .handlers import METHODS, Context, SCRIPT_VERSION
 from .server import TCPServer
 
@@ -25,17 +28,19 @@ class ClaudeLive(ControlSurface):
         ControlSurface.__init__(self, c_instance)
         self.tick_count = 0
         self.requests_processed = 0
+        self.requests_dropped = 0
         self._running = True
         self.settings = config_module.load_config()
         self.rpc_logger = logger_module.setup_logger(
             self, self.settings.get("log_file"), self.settings.get("log_level", "INFO"))
         if self.settings.get("_config_error"):
             self.rpc_logger.warning("config: %s", self.settings["_config_error"])
-        self.inbox = queue.Queue()
+        self.inbox = queue.Queue(maxsize=int(self.settings.get("queue_max", 256)))
         self.ctx = Context(self, self.settings, self.rpc_logger)
         self.dispatcher = Dispatcher(self.ctx, METHODS, self.rpc_logger)
         self.server = TCPServer(self.settings["host"], self.settings["port"], self.inbox, self.rpc_logger,
-                                self.settings.get("max_line_bytes", 4 * 1024 * 1024))
+                                self.settings.get("max_line_bytes", 4 * 1024 * 1024),
+                                self.settings.get("max_connections", 8))
         try:
             self.server.start()
             self.show_message("ClaudeLive %s listening on %s:%d" % (SCRIPT_VERSION, self.server.host, self.server.port))
@@ -54,6 +59,8 @@ class ClaudeLive(ControlSurface):
             return
         try:
             self.tick_count += 1
+            # Records logged from the socket threads wait here for the main thread.
+            logger_module.flush_deferred(self.rpc_logger)
             self.process_pending()
         except Exception:
             self.rpc_logger.error("tick failed:\n%s", traceback.format_exc())
@@ -75,13 +82,21 @@ class ClaudeLive(ControlSurface):
                 conn, payload = self.inbox.get_nowait()
             except queue.Empty:
                 break
+            if getattr(conn, "closed", False):
+                # The client gave up (timed out / reconnected). Running its request now
+                # could execute a mutation twice; it can no longer receive the result anyway.
+                self.requests_dropped += 1
+                self.rpc_logger.debug("dropping request from closed %r", conn)
+                continue
             processed += 1
             self.requests_processed += 1
             try:
                 response = self.dispatcher.handle(payload)
-            except Exception:
+            except Exception as exc:
                 self.rpc_logger.error("dispatcher failed:\n%s", traceback.format_exc())
-                response = None
+                response = error_response(request_id_of(payload), errors.INTERNAL_ERROR,
+                                          "Internal error in ClaudeLive: %s" % type(exc).__name__,
+                                          {"exception": type(exc).__name__, "detail": str(exc)})
             if response is not None:
                 try:
                     self.server.send(conn, self.dispatcher.encode(response))
