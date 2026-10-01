@@ -12,11 +12,16 @@ import logging
 import time
 from typing import Any
 
-from .errors import INTERNAL_ERROR, LiveError
+from .errors import INTERNAL_ERROR, SCRIPT_TIMEOUT, LiveError
 
 log = logging.getLogger("ableton_live_mcp.client")
 
 MAX_LINE = 4 * 1024 * 1024  # PROTOCOL.md section 1: 4 MiB per line
+
+# PROTOCOL.md section 8: a -32006 TIMEOUT with ``retry: true`` means the script's bounded
+# operation made progress and cached it; the same call again continues where it stopped.
+RETRY_ATTEMPTS = 10  # calls in all, including the first
+RETRY_DELAY = 0.05  # seconds between attempts, so the script's next tick can run
 
 READ_TIMEOUT = 5.0
 MUTATION_TIMEOUT = 15.0
@@ -38,6 +43,11 @@ _READ_SUFFIXES = ("get", "list", "ping", "search")
 def is_read_method(method: str) -> bool:
     tail = method.rsplit(".", 1)[-1]
     return tail.startswith(_READ_SUFFIXES)
+
+
+def is_retryable(err: LiveError) -> bool:
+    """True for the script's ``-32006 TIMEOUT`` carrying ``data.retry == true``."""
+    return err.code == SCRIPT_TIMEOUT and isinstance(err.data, dict) and err.data.get("retry") is True
 
 
 def timeout_for(method: str, overrides: dict[str, float] | None = None) -> float:
@@ -63,6 +73,8 @@ class LiveClient:
         self.port = port
         self.connect_timeout = connect_timeout
         self.timeout_overrides: dict[str, float] = {}
+        self.retry_attempts = RETRY_ATTEMPTS
+        self.retry_delay = RETRY_DELAY
         self._reader: asyncio.StreamReader | None = None
         self._writer: asyncio.StreamWriter | None = None
         self._lock = asyncio.Lock()
@@ -153,6 +165,24 @@ class LiveClient:
                 raise LiveError("CONNECTION", f"Live closed the connection at {self.address} while handling {method}")
 
             return await self._parse_response(raw, req_id, method)
+
+    async def call_retrying(self, method: str, params: dict[str, Any] | None = None, timeout: float | None = None) -> dict[str, Any]:
+        """``call`` that repeats the same request while the script answers ``-32006`` with ``retry: true``.
+
+        Bounded operations (browser uri resolution) report progress this way; after
+        ``retry_attempts`` calls in all the last error is surfaced unchanged.
+        """
+        attempt = 0
+        while True:
+            attempt += 1
+            try:
+                return await self.call(method, params, timeout=timeout)
+            except LiveError as exc:
+                if attempt >= self.retry_attempts or not is_retryable(exc):
+                    raise
+                log.debug("%s: script asked for a retry (%d/%d)", method, attempt, self.retry_attempts)
+                if self.retry_delay > 0:
+                    await asyncio.sleep(self.retry_delay)
 
     async def _parse_response(self, raw: bytes, req_id: int, method: str) -> dict[str, Any]:
         snippet = raw[:300].decode("utf-8", "replace").rstrip("\n")

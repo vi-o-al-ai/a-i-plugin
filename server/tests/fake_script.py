@@ -14,6 +14,8 @@ TRACK_NAMES = ["Kick", "Snare", "Bass", "Pad"]
 SCENE_NAMES = ["Intro", "Verse", "Chorus", "Drop"]
 DEVICE_NAMES = {"0": "Wavetable", "1": "Reverb", "0/0/0": "Operator"}
 DESTRUCTIVE = {"song.delete_track", "song.delete_scene", "clip.delete", "device.delete"}
+NOTE_RANGE_KEYS = ("from_time", "time_span", "from_pitch", "pitch_span")
+RETRY_TIMEOUT = (-32006, "Browser traversal hit its time budget; the same call again continues", {"retry": True, "nodes_visited": 1234})
 
 BROWSER_ITEMS = [
     {"name": "Wavetable", "uri": "query:Synths#Wavetable", "category": "instruments", "path": ["Instruments", "Wavetable"]},
@@ -141,6 +143,14 @@ class FakeScript:
         self.wrong_id_next = False  # answer the next request with a mismatched id
         self.garbage_next = False  # answer the next request with a non-JSON line
         self.note_count = 16
+        # browser.search: the first N calls answer truncated=true (the script's resumable
+        # traversal). Call k (0-based) returns the hits among search_pages[k] when given, else a
+        # cumulative slice of BROWSER_ITEMS (2 more items per call); later calls scan everything.
+        self.search_truncated_calls = 0
+        self.search_pages: list[list[dict[str, Any]]] = []
+        self.search_calls = 0
+        # method -> how many leading calls answer -32006 TIMEOUT with {"retry": true}
+        self.retry_timeouts: dict[str, int] = {}
         self.ping_result: dict[str, Any] = {
             "script_version": "0.1.0", "protocol_version": 1, "live_version": "12.1.5", "live_major": 12,
             "live_minor": 1, "python_version": "3.11.4", "tick_count": 1234,
@@ -247,9 +257,17 @@ class FakeScript:
     def _scripted_error(self, method: str, params: dict[str, Any]) -> tuple[int, str, Any] | None:
         if method in self.errors:
             return self.errors[method]
+        if self.retry_timeouts.get(method, 0) > 0:
+            self.retry_timeouts[method] -= 1
+            return RETRY_TIMEOUT
         if params.get("track") == 9:
             return (-32000, "Track 9 does not exist (set has 4 tracks)", {"kind": "track", "index": 9, "count": 4})
-        if method in DESTRUCTIVE and params.get("confirm") is not True:
+        confirm_needed = method in DESTRUCTIVE
+        if method == "notes.remove" and not params.get("note_ids") and not any(k in params for k in NOTE_RANGE_KEYS):
+            confirm_needed = True  # PROTOCOL.md: removing every note needs confirm
+        if method == "arrangement.add_clip_from_slot" and params.get("delete_source"):
+            confirm_needed = True  # PROTOCOL.md: deleting the session clip needs confirm
+        if confirm_needed and params.get("confirm") is not True:
             return (-32002, f"{method} is destructive and requires confirm: true", {"method": method})
         return None
 
@@ -304,10 +322,22 @@ class FakeScript:
         def search(p: dict[str, Any]) -> dict[str, Any]:
             q = p["query"].lower()
             cats = p.get("categories")
-            hits = [i for i in BROWSER_ITEMS if q in i["name"].lower() and (not cats or i["category"] in cats)]
+            call = self.search_calls
+            self.search_calls += 1
+            truncated = call < self.search_truncated_calls
+            if truncated:
+                pool = self.search_pages[call] if call < len(self.search_pages) else BROWSER_ITEMS[: 2 * (call + 1)]
+            else:
+                pool = BROWSER_ITEMS
+            hits = [i for i in pool if q in i["name"].lower() and (not cats or i["category"] in cats)]
             rank = lambda i: (0 if i["name"].lower() == q else 1 if i["name"].lower().startswith(q) else 2)  # noqa: E731
             hits.sort(key=rank)
-            return {"items": [browser_item(i) for i in hits[: p.get("limit", 25)]], "truncated": False, "nodes_visited": 321}
+            return {
+                "items": [browser_item(i) for i in hits[: p.get("limit", 25)]],
+                "truncated": truncated,
+                "nodes_visited": len(pool),
+                "total_matches": len(hits),
+            }
 
         def listing(p: dict[str, Any]) -> dict[str, Any]:
             cat = p.get("category")
@@ -330,7 +360,8 @@ class FakeScript:
 
         return {
             "sys.ping": lambda p: dict(self.ping_result),
-            "sys.describe_api": lambda p: {"path": p.get("path", "/Live/Remote Scripts/ClaudeLive/live_api_dump.md"), "classes": 42, "bytes": 12345},
+            # The script chooses the path (PROTOCOL.md sys.describe_api); params are ignored.
+            "sys.describe_api": lambda p: {"path": "/Users/me/.claude-live/api/live_api_12.1.5.md", "classes": 42, "bytes": 12345},
             "sys.log": ok,
             "song.get_overview": overview,
             "song.get_transport": lambda p: transport(),
@@ -346,7 +377,10 @@ class FakeScript:
             "song.create_midi_track": lambda p: track_summary(4 if p.get("index", -1) == -1 else p["index"], p.get("name") or "5-MIDI"),
             "song.create_audio_track": lambda p: track_summary(4 if p.get("index", -1) == -1 else p["index"], p.get("name") or "5-Audio", type_="audio"),
             "song.create_return_track": lambda p: track_summary(1, p.get("name") or "B-Return", "return", "return"),
-            "song.delete_track": lambda p: {"deleted": TRACK_NAMES[p["track"]], "track_count": 3},
+            "song.delete_track": lambda p: {
+                "deleted": TRACK_NAMES[p["track"]] if p.get("track_type", "track") == "track" else f"{chr(65 + p['track'])}-Return",
+                "track_type": p.get("track_type", "track"), "track_count": 3,
+            },
             "song.create_scene": lambda p: scene_summary(4 if p.get("index", -1) == -1 else p["index"], p.get("name") or "New Scene"),
             "song.duplicate_scene": lambda p: scene_summary(p["scene"] + 1, f"{SCENE_NAMES[p['scene']]} copy"),
             "song.delete_scene": lambda p: {"deleted": SCENE_NAMES[p["scene"]], "scene_count": 3},
@@ -389,6 +423,6 @@ class FakeScript:
             "arrangement.set_locator": lambda p: cue_point(0, p.get("name") or "Locator", p["time"]),
             "arrangement.delete_locator": lambda p: {"deleted": "Drop"},
             "automation.get": lambda p: {"exists": True, "points": [{"time": 0.0, "value": 0.5}, {"time": 2.0, "value": 0.8}], "parameter": parameter()},
-            "automation.set": lambda p: {"inserted": len(p["points"]), "exists": True},
+            "automation.set": lambda p: {"inserted": len(p["points"]), "exists": True, "mode": p.get("mode", "ramp")},
             "automation.clear": lambda p: {"cleared": p.get("parameter") or "all"},
         }

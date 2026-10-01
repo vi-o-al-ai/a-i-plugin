@@ -23,15 +23,21 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         name: str | None = None,
         color_index: int | None = None,
         tempo: float | None = None,
+        clear_tempo: bool = False,
         why: str | None = None,
     ) -> dict[str, Any]:
-        """Rename a scene, set its color_index (0-69) or give it a scene tempo (BPM)."""
-        params = kw(scene=scene, name=name, color_index=color_index, tempo=tempo)
+        """Rename a scene, set its color_index (0-69), give it a scene tempo (BPM) or remove that tempo with clear_tempo=True."""
+        params = kw(scene=scene, name=name, color_index=color_index, tempo=tempo, clear_tempo=True if clear_tempo else None)
 
         async def do() -> dict[str, Any]:
-            if len(params) <= 1:
-                raise invalid_params("set_scene needs at least one of name, color_index, tempo")
-            return await ctx.client.call("scene.set", params)
+            if clear_tempo and tempo is not None:
+                raise invalid_params("set_scene takes either tempo or clear_tempo, not both", {"tempo": tempo, "clear_tempo": True})
+            fields = kw(name=name, color_index=color_index, tempo=tempo)
+            if clear_tempo:
+                fields["tempo"] = None  # PROTOCOL.md scene.set: an explicit null clears the scene tempo
+            if not fields:
+                raise invalid_params("set_scene needs at least one of name, color_index, tempo, clear_tempo")
+            return await ctx.client.call("scene.set", {"scene": scene, **fields})
 
         return await run_tool(ctx, "set_scene", "M", params, why, do)
 

@@ -17,13 +17,15 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         include_devices: bool = True,
         include_params: bool = False,
         include_returns: bool = True,
+        include_note_counts: bool = False,
     ) -> dict[str, Any]:
-        """Read the whole set: transport, scale, tracks (with clips and devices), return tracks, master, scenes and selection. Use the indices it returns in every other tool."""
+        """Read the whole set: transport, scale, tracks (with clips and devices), return tracks, master, scenes and selection. Use the indices it returns in every other tool; include_note_counts fills note_count on every MIDI clip (slower)."""
         params = kw(
             include_clips=include_clips,
             include_devices=include_devices,
             include_params=include_params,
             include_returns=include_returns,
+            include_note_counts=include_note_counts,
         )
         return await run_tool(ctx, "get_session", "R", params, None, lambda: ctx.client.call("song.get_overview", params))
 
@@ -40,13 +42,11 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         loop_start: float | None = None,
         loop_length: float | None = None,
         position: float | None = None,
-        record_mode: bool | None = None,
-        session_record: bool | None = None,
         signature_numerator: int | None = None,
         signature_denominator: int | None = None,
         why: str | None = None,
     ) -> dict[str, Any]:
-        """Change tempo, metronome, arrangement loop, playhead position, record modes or time signature. Positions and lengths are in beats."""
+        """Change tempo, metronome, arrangement loop, playhead position or time signature; positions and lengths are in beats. Record controls are deliberately not exposed."""
         params = kw(
             tempo=tempo,
             metronome=metronome,
@@ -54,8 +54,6 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
             loop_start=loop_start,
             loop_length=loop_length,
             position=position,
-            record_mode=record_mode,
-            session_record=session_record,
             signature_numerator=signature_numerator,
             signature_denominator=signature_denominator,
         )
@@ -110,7 +108,7 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
 
     @mcp.tool(title="Undo", annotations=MUTATE)
     async def undo(steps: int = 1) -> dict[str, Any]:
-        """Undo the last Live action (steps 1-20 undoes several). View and selection changes are not undoable."""
+        """Undo the last Live action (steps 1-20 undoes several). Also undoes the user's own most recent edits, one step each; view and selection changes are not undoable."""
         params = kw(steps=steps)
         return await run_tool(ctx, "undo", "M", params, None, lambda: _repeat("song.undo", "undo", steps))
 

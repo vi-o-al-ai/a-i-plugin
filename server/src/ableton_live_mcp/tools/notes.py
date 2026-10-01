@@ -7,8 +7,8 @@ from typing import Any
 
 from mcp.server.fastmcp import FastMCP
 
-from ..errors import invalid_params, too_large
-from .common import MUTATE, READ, AppContext, clip_address, kw, require_list_of_dicts, run_tool
+from ..errors import CONFIRM_REQUIRED, invalid_params, tool_error, too_large
+from .common import DESTROY, MUTATE, READ, AppContext, clip_address, kw, require_list_of_dicts, run_tool
 
 CHUNK_SIZE = 500
 MAX_NOTES_PER_CALL = 5000
@@ -118,7 +118,7 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
 
         return await run_tool(ctx, "add_notes", "M", params, why, do)
 
-    @mcp.tool(title="Replace notes", annotations=MUTATE)
+    @mcp.tool(title="Replace notes", annotations=DESTROY)
     async def replace_notes(
         track: int,
         slot: int | None = None,
@@ -126,7 +126,7 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         notes: list[dict[str, Any]] | None = None,
         why: str | None = None,
     ) -> dict[str, Any]:
-        """Remove every note in a MIDI clip and write these instead (same note format as add_notes; an empty list clears the clip). Up to 5000 notes per call."""
+        """Replaces every note in the clip (undoable) with these notes (same format as add_notes; an empty list clears the clip). Up to 5000 notes per call; ask before rewriting a clip the user wrote."""
         params = kw(track=track, slot=slot, arrangement_index=arrangement_index, notes=notes)
 
         async def do() -> dict[str, Any]:
@@ -136,7 +136,7 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
 
         return await run_tool(ctx, "replace_notes", "M", params, why, do)
 
-    @mcp.tool(title="Remove notes", annotations=MUTATE)
+    @mcp.tool(title="Remove notes", annotations=DESTROY)
     async def remove_notes(
         track: int,
         slot: int | None = None,
@@ -146,28 +146,30 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         time_span: float | None = None,
         from_pitch: int | None = None,
         pitch_span: int | None = None,
+        confirm: bool = False,
         why: str | None = None,
     ) -> dict[str, Any]:
-        """Remove notes by id, or every note in a time/pitch window (no filters = all notes). Times are beats from clip start."""
-        params = kw(
-            track=track,
-            slot=slot,
-            arrangement_index=arrangement_index,
-            note_ids=note_ids,
-            from_time=from_time,
-            time_span=time_span,
-            from_pitch=from_pitch,
-            pitch_span=pitch_span,
-        )
+        """Remove notes by id, or every note in a time/pitch window (times are beats from clip start). With neither note_ids nor a window it removes every note in the clip and needs confirm=True."""
+        selector = kw(note_ids=note_ids, from_time=from_time, time_span=time_span, from_pitch=from_pitch, pitch_span=pitch_span)
+        removes_all = not selector
+        params = kw(track=track, slot=slot, arrangement_index=arrangement_index, **selector, confirm=True if confirm else None)
 
         async def do() -> dict[str, Any]:
             address = clip_address(track, slot, arrangement_index)
-            return await ctx.client.call(
-                "notes.remove",
-                {**address, **kw(note_ids=note_ids, from_time=from_time, time_span=time_span, from_pitch=from_pitch, pitch_span=pitch_span)},
-            )
+            if note_ids is not None and not note_ids:
+                raise invalid_params("note_ids must not be empty; omit it to remove by time/pitch window", {"note_ids": note_ids})
+            if removes_all:
+                if confirm is not True:
+                    raise tool_error(
+                        CONFIRM_REQUIRED,
+                        "this removes every note in the clip (no note_ids and no time/pitch window were given); "
+                        "use replace_notes with [] for an intentional rewrite",
+                        {"track": track, "slot": slot, "arrangement_index": arrangement_index},
+                    )
+                return await ctx.client.call("notes.remove", {**address, "confirm": True})
+            return await ctx.client.call("notes.remove", {**address, **selector})
 
-        return await run_tool(ctx, "remove_notes", "M", params, why, do)
+        return await run_tool(ctx, "remove_notes", "MD" if removes_all else "M", params, why, do)
 
     @mcp.tool(title="Modify notes", annotations=MUTATE)
     async def modify_notes(

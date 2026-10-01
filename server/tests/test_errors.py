@@ -41,6 +41,10 @@ def test_format_hints() -> None:
     assert "Live is not running, or the ClaudeLive control surface is not selected" in format_error("CONNECTION", "refused")
     assert "modal dialog" in format_error("TIMEOUT", "no answer")
     assert "modal dialog" not in format_error(-32006, "budget exhausted")  # script-side budget, different hint
+    assert format_error(-32006, "budget exhausted", {"retry": True}) == (
+        "TIMEOUT: budget exhausted. The script is still indexing the browser; the server retries automatically. "
+        'If you see this, call again. Data: {"retry":true}'
+    )
     assert format_error(-32602, "bad").startswith("INVALID_PARAMS: bad.")
 
 
@@ -97,7 +101,7 @@ async def test_connection_refused_reaches_claude(closed_port_settings) -> None:
         assert res.isError is True
         text = res.content[0].text
         assert "CONNECTION: Could not connect to Live at 127.0.0.1:" in text
-        assert "Live is not running, or the ClaudeLive control surface is not selected (Preferences → Link, Tempo & MIDI → Control Surface)" in text
+        assert "Live is not running, or the ClaudeLive control surface is not selected in Settings → Link, Tempo & MIDI → Control Surface (called Preferences in older Live versions)" in text
 
 
 async def test_timeout_reaches_claude_and_reconnects(client, app, fake_script) -> None:

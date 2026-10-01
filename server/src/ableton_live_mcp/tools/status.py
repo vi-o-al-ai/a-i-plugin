@@ -7,7 +7,7 @@ from typing import Any
 from mcp.server.fastmcp import FastMCP
 
 from ..errors import LiveError
-from .common import READ, AppContext, kw, run_tool
+from .common import MUTATE, READ, AppContext, run_tool
 
 EXPECTED_PROTOCOL_VERSION = 1
 
@@ -20,8 +20,9 @@ def _diagnosis(ctx: AppContext, err: LiveError) -> list[str]:
     )
     refused = [
         "Check that Ableton Live 12 is running with a set open.",
-        "In Live, open Preferences → Link, Tempo & MIDI → Control Surface and select ClaudeLive "
-        "(the ClaudeLive folder must be in Live's Remote Scripts directory; restart Live after installing it).",
+        "In Live, open Settings → Link, Tempo & MIDI → Control Surface (called Preferences in older Live versions) "
+        "and select ClaudeLive (the ClaudeLive folder must be in Live's Remote Scripts directory; restart Live "
+        "after installing it).",
         port_step,
         "If Live was just started, wait a few seconds and call ableton_status again.",
     ]
@@ -88,11 +89,10 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
 
         return await run_tool(ctx, "ableton_status", "R", {}, None, do)
 
-    @mcp.tool(title="Describe Live API", annotations=READ)
-    async def ableton_describe_api(path: str | None = None) -> dict[str, Any]:
-        """Dump the real Live API (classes and docstrings) from inside the user's Live to a Markdown file for debugging. Returns the file path and size."""
-        params = kw(path=path)
-        return await run_tool(ctx, "ableton_describe_api", "R", params, None, lambda: ctx.client.call("sys.describe_api", params))
+    @mcp.tool(title="Describe Live API", annotations=MUTATE)
+    async def ableton_describe_api() -> dict[str, Any]:
+        """Dump the real Live API (classes and docstrings) from inside the user's Live for debugging: writes a Markdown file under ~/.claude-live/api/ (the script chooses the path) and returns its path and size."""
+        return await run_tool(ctx, "ableton_describe_api", "M", {}, None, lambda: ctx.client.call("sys.describe_api", {}))
 
     @mcp.tool(title="Get action history", annotations=READ)
     async def get_history(limit: int = 50, include_reads: bool = False) -> dict[str, Any]:

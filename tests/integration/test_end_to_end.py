@@ -27,7 +27,7 @@ CONTRACT_MISMATCH = re.compile(
 )
 
 READ_TOOLS = {
-    "ableton_status", "ableton_describe_api", "get_history", "get_session", "get_transport", "get_track",
+    "ableton_status", "get_history", "get_session", "get_transport", "get_track",
     "get_clip", "get_notes", "get_devices", "browse", "get_arrangement", "get_automation", "get_selection",
 }
 
@@ -81,7 +81,36 @@ def test_status(mcp_session):
     assert isinstance(status["round_trip_ms"], (int, float)) and status["round_trip_ms"] >= 0
     assert status["port"] == mcp_session.port
     assert status["history_jsonl"].startswith(str(mcp_session.home))
-    assert "warning" not in status
+    assert "warning" not in status and "config_warnings" not in status
+
+
+def test_tool_schemas_follow_the_contract(mcp_session):
+    tools = {tool.name: tool for tool in mcp_session.list_tools()}
+
+    def props(name):
+        return set(tools[name].inputSchema.get("properties", {}))
+
+    assert not props("set_transport") & {"record_mode", "session_record"}  # TOOLS.md: not exposed
+    assert props("ableton_describe_api") == set()  # the script chooses the path
+    assert tools["ableton_describe_api"].annotations.readOnlyHint is False
+    assert "confirm" in props("remove_notes") and "confirm" in props("add_clip_to_arrangement")
+    assert "clear_tempo" in props("set_scene") and "track_type" in props("delete_track")
+    for name in ("get_session", "get_track", "get_arrangement"):
+        assert "include_note_counts" in props(name), name
+    for name in ("replace_notes", "remove_notes", "delete_locator", "clear_automation", "delete_track"):
+        assert tools[name].annotations.destructiveHint is True, name
+    for name in READ_TOOLS:
+        assert tools[name].annotations.readOnlyHint is True, name
+
+
+def test_describe_api_writes_under_the_script_home(mcp_session, remote_script):
+    res = mcp_session.ok("ableton_describe_api")
+    path = Path(res["path"])
+    assert path.suffix == ".md" and path.is_file(), res
+    assert res["classes"] > 0 and res["bytes"] > 0 and path.stat().st_size > 0
+    api_dir = (remote_script.home / ".claude-live" / "api").resolve()
+    assert path.resolve().parent == api_dir, (path, api_dir)
+    assert path.read_text(encoding="utf-8").lstrip().startswith("#")
 
 
 # --------------------------------------------------------------------------
@@ -193,6 +222,8 @@ def test_production_sequence(mcp_session):
     assert drop == len(SCENE_NAMES) and scene["name"] == "Drop"
     scene = s.ok("set_scene", scene=drop, color_index=12, tempo=128.0)
     assert scene["index"] == drop and scene["color_index"] == 12 and scene["tempo"] == 128.0
+    scene = s.ok("set_scene", scene=drop, clear_tempo=True, why="Back to the set tempo")  # scene.set tempo: null
+    assert scene["index"] == drop and scene["tempo"] is None and scene["color_index"] == 12
     fired = s.ok("fire_scene", scene=drop)
     assert fired["index"] == drop and fired["name"] == "Drop"
     assert s.ok("get_selection")["scene"]["index"] == drop  # launching a scene selects it
@@ -208,6 +239,10 @@ def test_production_sequence(mcp_session):
     arr = s.ok("add_clip_to_arrangement", track=t, slot=0, time=16.0, why="Place the hook at bar 5")
     assert arr["start_time"] == 16.0 and arr["end_time"] == 20.0
     assert arr["is_arrangement_clip"] is True and arr["arrangement_index"] == 0 and arr["slot"] is None
+    text = s.err("add_clip_to_arrangement", track=t, slot=0, time=24.0, delete_source=True)  # needs confirm
+    assert "CONFIRM_REQUIRED" in text and "delete_source" in text, text
+    assert s.ok("get_clip", track=t, slot=0)["name"] == "Hook"  # the session clip is still there
+    assert [c["start_time"] for c in s.ok("get_arrangement")["tracks"][t]["clips"]] == [16.0]  # nothing placed
     locator = s.ok("set_locator", time=16.0, name="Drop", why="Mark the drop")
     assert locator["name"] == "Drop" and locator["time"] == 16.0
     overview = s.ok("get_arrangement")
@@ -222,7 +257,7 @@ def test_production_sequence(mcp_session):
         points=[{"time": 0.0, "value": pmin}, {"time": 4.0, "value": pmax}], mode="ramp",
         why="Sweep the filter over the hook",
     )
-    assert auto["exists"] is True and auto["inserted"] > 2
+    assert auto["exists"] is True and auto["inserted"] > 2 and auto["mode"] == "ramp"
     read = s.ok("get_automation", track=t, slot=0, device_path="0", parameter=param_name)
     assert read["exists"] is True and read["parameter"]["name"] == param_name
     values = [p["value"] for p in read["points"]]
@@ -252,8 +287,12 @@ def test_production_sequence(mcp_session):
     assert transport["tempo"] == 124
     assert s.ok("get_transport")["tempo"] == 124
     assert s.ok("play")["is_playing"] is True
+    text = s.err("set_locator", time=48.0, name="Nope")  # PROTOCOL: locators cannot be set while playing
+    assert "INVALID_STATE" in text, text
+    assert not CONTRACT_MISMATCH.search(text), text
     assert s.ok("stop")["is_playing"] is False
     assert s.ok("get_transport")["is_playing"] is False
+    assert "Nope" not in [c["name"] for c in s.ok("get_arrangement", include_clips=False)["locators"]]
 
     # -- scale ----------------------------------------------------------------------
     scale = s.ok("set_scale", root_note="F", scale_name="Minor")
@@ -283,8 +322,15 @@ def test_production_sequence(mcp_session):
     removed = s.ok("remove_notes", track=t, slot=0, from_pitch=44, pitch_span=1)  # the hats (42 + 2)
     assert removed["removed"] == 8 and removed["note_count"] == 6
     assert s.ok("get_notes", track=t, slot=0)["count"] == 6
-    replaced = s.ok("replace_notes", track=t, slot=0, notes=[], why="Start the hook over")
-    assert replaced["removed"] == 6 and replaced["added"] == 0 and replaced["note_count"] == 0
+    text = s.err("remove_notes", track=t, slot=0)  # no note_ids, no window: removes everything, needs confirm
+    assert "CONFIRM_REQUIRED" in text and "every note in the clip" in text, text
+    assert s.ok("get_notes", track=t, slot=0)["count"] == 6  # refused before reaching Live
+    hook = [{"pitch": 38, "start": 0.0, "duration": 1.0}, {"pitch": 45, "start": 2.0, "duration": 1.0, "velocity": 90}]
+    replaced = s.ok("replace_notes", track=t, slot=0, notes=hook, why="Start the hook over")
+    assert replaced["removed"] == 6 and replaced["added"] == 2 and replaced["note_count"] == 2
+    assert [n["pitch"] for n in s.ok("get_notes", track=t, slot=0)["notes"]] == [38, 45]
+    wiped = s.ok("remove_notes", track=t, slot=0, confirm=True, why="Wipe the hook")
+    assert wiped == {"removed": 2, "note_count": 0}
     assert s.ok("get_notes", track=t, slot=0) == {"notes": [], "count": 0, "clip_length": 4.0}
 
 
@@ -324,6 +370,10 @@ def test_history_records_the_sequence(mcp_session):
     assert "CONFIRM_REQUIRED" in refused["error"] and refused["flags"] == ["M", "D"]
     done = next(e for e in entries if e["tool"] == "delete_clip" and e["ok"])
     assert done["resolved"]["clip_name"] == "Hook" and done["params"]["confirm"] is True
+    wiped = next(e for e in entries if e["tool"] == "remove_notes" and e["params"].get("confirm"))
+    assert wiped["ok"] and wiped["flags"] == ["M", "D"] and wiped["result_summary"]["removed"] == 2
+    refused_wipe = next(e for e in entries if e["tool"] == "remove_notes" and not e["ok"])
+    assert "CONFIRM_REQUIRED" in refused_wipe["error"] and refused_wipe["flags"] == ["M", "D"]
 
     whys = [e["why"] for e in entries if e.get("why")]
     assert len(whys) >= 2 and WHY_TRACK in whys and WHY_NOTES in whys
@@ -372,6 +422,46 @@ def test_return_master_and_arrangement_addressing(mcp_session):
     assert is_error and "INVALID_PARAMS" in text and "exactly one of slot" in text
 
 
+def test_delete_track_by_track_type(mcp_session):
+    s = mcp_session
+    created = s.ok("create_return_track", name="C-Temp", why="A return to delete again")
+    assert created["track_type"] == "return"
+    returns = s.ok("get_session", include_clips=False, include_devices=False)["return_tracks"]
+    index = next(r["index"] for r in returns if r["name"] == "C-Temp")
+    text = s.err("delete_track", track=index, track_type="return")  # confirm is still required
+    assert "CONFIRM_REQUIRED" in text and "return track" in text, text
+    text = s.err("delete_track", track=0, track_type="master", confirm=True)  # rejected locally
+    assert "INVALID_PARAMS" in text and '"track" or "return"' in text, text
+    deleted = s.ok("delete_track", track=index, track_type="return", confirm=True, why="Done with it")
+    assert deleted["deleted"] == "C-Temp" and deleted["track_type"] == "return"
+    assert deleted["track_count"] == len(returns) - 1
+    names = [r["name"] for r in s.ok("get_session", include_clips=False, include_devices=False)["return_tracks"]]
+    assert "C-Temp" not in names and names == [r["name"] for r in returns if r["name"] != "C-Temp"]
+
+
+def test_include_note_counts(mcp_session):
+    """List-style reads leave note_count null unless asked (counting is expensive); clip.get always fills it."""
+    s = mcp_session
+    plain = s.ok("get_session")
+    drums = plain["tracks"][0]
+    assert drums["type"] == "midi" and drums["clips"]
+    assert all(c["note_count"] is None for c in drums["clips"]), drums["clips"]
+    counted = s.ok("get_session", include_note_counts=True)["tracks"][0]["clips"]
+    assert all(isinstance(c["note_count"], int) for c in counted), counted
+    assert counted[0]["note_count"] == s.ok("get_notes", track=0, slot=0)["count"]
+    assert s.ok("get_clip", track=0, slot=0)["note_count"] == counted[0]["note_count"]
+
+    assert all(c["note_count"] is None for c in s.ok("get_track", track=0)["clips"])
+    assert [c["note_count"] for c in s.ok("get_track", track=0, include_note_counts=True)["clips"]] == [c["note_count"] for c in counted]
+    assert all(c["note_count"] is None for c in s.ok("get_track", track=VOX, include_note_counts=True)["clips"])  # audio
+
+    arr_plain = next(t for t in s.ok("get_arrangement")["tracks"] if t["index"] == 0)["clips"]
+    assert arr_plain and all(c["note_count"] is None for c in arr_plain)
+    arr_counted = next(t for t in s.ok("get_arrangement", include_note_counts=True)["tracks"] if t["index"] == 0)["clips"]
+    assert all(isinstance(c["note_count"], int) for c in arr_counted)
+    assert arr_counted[0]["note_count"] == s.ok("get_notes", track=0, arrangement_index=0)["count"]
+
+
 # --------------------------------------------------------------------------
 # 5. every tool once
 # --------------------------------------------------------------------------
@@ -395,17 +485,13 @@ def _outro_locator(s):
     return {"index": outro["index"]}
 
 
-def _dump_path(s):
-    return {"path": str(s.home / "live_api_dump.md")}
-
-
 # (tool, args) in TOOLS.md order; args may be a callable(session) -> args when they depend on
 # the current state. Targets are the factory tracks 0-3 (untouched by the sequence) and
 # objects created earlier in this table, so each row stays valid in file order.
 SMOKE = [
     # status and diagnostics
     ("ableton_status", {}),
-    ("ableton_describe_api", _dump_path),
+    ("ableton_describe_api", {}),
     ("get_history", {"limit": 10, "include_reads": True}),
     # session and transport
     ("get_session", {"include_params": True}),
@@ -462,7 +548,7 @@ SMOKE = [
     ("load_device", {"track": VOX, "uri": "query:AudioFx#Saturator"}),
     # arrangement
     ("get_arrangement", {"include_clips": True}),
-    ("add_clip_to_arrangement", {"track": 1, "slot": 0, "time": 32.0}),
+    ("add_clip_to_arrangement", {"track": 1, "slot": 7, "time": 32.0, "delete_source": True, "confirm": True}),  # slot 7: the duplicate_clip copy
     ("set_locator", {"time": 96.0, "name": "Outro"}),
     ("delete_locator", _outro_locator),
     # automation
@@ -495,6 +581,30 @@ def test_every_tool_once(mcp_session, tool, args):
         assert not CONTRACT_MISMATCH.search(text), "%s(%r): contract mismatch between the halves:\n%s" % (tool, args, text)
     assert not is_error, "%s(%r) failed:\n%s" % (tool, args, text)
     assert isinstance(structured, dict) and structured, "%s returned no structured object: %r" % (tool, text)
+
+
+def test_delete_source_moved_the_session_clip(mcp_session):
+    """After the SMOKE row: the copy sits in the arrangement and slot 7 on Bass is empty again."""
+    s = mcp_session
+    bass = next(t for t in s.ok("get_arrangement")["tracks"] if t["index"] == 1)
+    assert 32.0 in [c["start_time"] for c in bass["clips"]]
+    text = s.err("get_notes", track=1, slot=7)
+    assert "INVALID_STATE" in text and not CONTRACT_MISMATCH.search(text), text
+    assert 7 not in [c["slot"] for c in s.ok("get_track", track=1)["clips"]]
+
+
+def test_delete_locator_fails_while_playing(mcp_session):
+    s = mcp_session
+    locator = s.ok("set_locator", time=120.0, name="Tail")
+    try:
+        assert s.ok("play")["is_playing"] is True
+        text = s.err("delete_locator", index=locator["index"])
+        assert "INVALID_STATE" in text and not CONTRACT_MISMATCH.search(text), text
+    finally:
+        s.ok("stop")
+    locators = s.ok("get_arrangement", include_clips=False)["locators"]
+    tail = next(c for c in locators if c["name"] == "Tail")
+    assert s.ok("delete_locator", index=tail["index"])["deleted"] == "Tail"
 
 
 # --------------------------------------------------------------------------

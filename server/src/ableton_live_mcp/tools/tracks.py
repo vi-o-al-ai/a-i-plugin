@@ -18,14 +18,16 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         include_clips: bool = True,
         include_devices: bool = True,
         include_params: bool = False,
+        include_note_counts: bool = False,
     ) -> dict[str, Any]:
-        """Read one track (track_type "track" | "return" | "master") with its mixer state, clips and devices."""
+        """Read one track (track_type "track" | "return" | "master") with its mixer state, clips and devices; include_note_counts fills note_count on its MIDI clips."""
         params = kw(
             track=track,
             track_type=track_type,
             include_clips=include_clips,
             include_devices=include_devices,
             include_params=include_params,
+            include_note_counts=include_note_counts,
         )
         return await run_tool(ctx, "get_track", "R", params, None, lambda: ctx.client.call("track.get", params))
 
@@ -87,12 +89,23 @@ def register(mcp: FastMCP, ctx: AppContext) -> None:
         return await run_tool(ctx, "set_track", "M", params, why, do)
 
     @mcp.tool(title="Delete track", annotations=DESTROY)
-    async def delete_track(track: int, confirm: bool = False, why: str | None = None) -> dict[str, Any]:
-        """Delete a track and everything on it. Requires confirm=True; ask the user first. Later track indices shift down."""
-        params = kw(track=track, confirm=confirm)
+    async def delete_track(
+        track: int,
+        track_type: str = "track",
+        confirm: bool = False,
+        why: str | None = None,
+    ) -> dict[str, Any]:
+        """Delete a track ("track") or return track ("return") and everything on it. Requires confirm=True; ask the user first. Later indices of that kind shift down."""
+        params = kw(track=track, track_type=track_type, confirm=confirm)
 
         async def do() -> dict[str, Any]:
-            require_confirm(confirm, "delete_track", f"track {track} and all of its clips and devices")
-            return await ctx.client.call("song.delete_track", {"track": track, "confirm": True})
+            if track_type not in ("track", "return"):
+                raise invalid_params(
+                    'delete_track track_type must be "track" or "return" (the master track cannot be deleted)',
+                    {"track_type": track_type, "available": ["track", "return"]},
+                )
+            label = f"return track {track}" if track_type == "return" else f"track {track}"
+            require_confirm(confirm, "delete_track", f"{label} and all of its clips and devices")
+            return await ctx.client.call("song.delete_track", {"track": track, "track_type": track_type, "confirm": True})
 
         return await run_tool(ctx, "delete_track", "MD", params, why, do)

@@ -24,7 +24,8 @@ INSTRUCTIONS = (
     "Times are in beats (one 4/4 bar = 4.0), pitches are MIDI note numbers 0-127, velocities 1-127, "
     "volume is normalized 0-1 (0.85 is 0 dB) and device_path is a string like \"0\", \"0/1/2\" or \"mixer\". "
     "Destructive tools (delete_track, delete_scene, delete_clip, delete_device, clear_automation of all "
-    "envelopes) refuse to run unless confirm=True; ask the user before confirming. "
+    "envelopes, remove_notes without a selector, add_clip_to_arrangement with delete_source) refuse to run "
+    "unless confirm=True; ask the user before confirming, and before replace_notes on a clip the user wrote. "
     "Pass a short `why` on every mutating tool: it is never sent to Live but is written to the local action "
     "history so the session log reads as a narrative the user can review."
 )

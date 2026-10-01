@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 
 from .config import Settings
@@ -15,6 +16,11 @@ def configure_logging(settings: Settings) -> None:
     handlers: list[logging.Handler] = [logging.StreamHandler(sys.stderr)]
     try:
         settings.ensure_dir(settings.logs_dir)
+        # Create the file 0600 before the handler opens it (best effort; the handler appends).
+        try:
+            os.close(os.open(settings.log_file, os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600))
+        except OSError:
+            pass
         handlers.append(logging.FileHandler(settings.log_file, encoding="utf-8"))
     except OSError as exc:  # unwritable home: stderr only
         print(f"ableton-live-mcp: cannot open log file {settings.log_file}: {exc}", file=sys.stderr)

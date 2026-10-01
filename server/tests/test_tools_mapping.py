@@ -14,10 +14,10 @@ NOTE = {"pitch": 60, "start": 0.0, "duration": 0.5, "velocity": 100}
 CASES: list[tuple[str, dict[str, Any], list[tuple[str, dict[str, Any]]]]] = [
     # status and diagnostics
     ("ableton_status", {}, [("sys.ping", {})]),
-    ("ableton_describe_api", {"path": "/tmp/dump.md"}, [("sys.describe_api", {"path": "/tmp/dump.md"})]),
+    ("ableton_describe_api", {}, [("sys.describe_api", {})]),
     ("get_history", {}, []),
     # session and transport
-    ("get_session", {}, [("song.get_overview", {"include_clips": True, "include_devices": True, "include_params": False, "include_returns": True})]),
+    ("get_session", {}, [("song.get_overview", {"include_clips": True, "include_devices": True, "include_params": False, "include_returns": True, "include_note_counts": False})]),
     ("get_transport", {}, [("song.get_transport", {})]),
     ("set_transport", {"tempo": 124.0, "metronome": True, "why": "w"}, [("song.set_transport", {"tempo": 124.0, "metronome": True})]),
     ("play", {"from_start": True}, [("song.play", {"from_start": True})]),
@@ -27,13 +27,13 @@ CASES: list[tuple[str, dict[str, Any], list[tuple[str, dict[str, Any]]]]] = [
     ("undo", {"steps": 2}, [("song.undo", {}), ("song.undo", {})]),
     ("redo", {}, [("song.redo", {})]),
     # tracks
-    ("get_track", {"track": 2}, [("track.get", {"track": 2, "include_clips": True, "include_devices": True, "include_params": False})]),
+    ("get_track", {"track": 2}, [("track.get", {"track": 2, "include_clips": True, "include_devices": True, "include_params": False, "include_note_counts": False})]),
     ("create_midi_track", {"name": "Lead"}, [("song.create_midi_track", {"index": -1, "name": "Lead"})]),
     ("create_audio_track", {}, [("song.create_audio_track", {"index": -1})]),
     ("create_return_track", {"name": "Delay"}, [("song.create_return_track", {"name": "Delay"})]),
     ("set_track", {"track": 2, "volume": 0.7, "mute": True, "sends": [{"index": 0, "value": 0.3}]},
      [("track.set", {"track": 2, "volume": 0.7, "mute": True, "sends": [{"index": 0, "value": 0.3}]})]),
-    ("delete_track", {"track": 2, "confirm": True}, [("song.delete_track", {"track": 2, "confirm": True})]),
+    ("delete_track", {"track": 2, "confirm": True}, [("song.delete_track", {"track": 2, "track_type": "track", "confirm": True})]),
     # scenes
     ("create_scene", {"name": "Drop", "index": 3}, [("song.create_scene", {"index": 3, "name": "Drop"})]),
     ("set_scene", {"scene": 1, "name": "Verse 2"}, [("scene.set", {"scene": 1, "name": "Verse 2"})]),
@@ -72,7 +72,7 @@ CASES: list[tuple[str, dict[str, Any], list[tuple[str, dict[str, Any]]]]] = [
     ("browse", {"query": "wavetable"}, [("browser.search", {"query": "wavetable", "limit": 25, "loadable_only": True})]),
     ("load_device", {"track": 2, "uri": "query:Synths#Wavetable"}, [("browser.load", {"uri": "query:Synths#Wavetable", "track": 2})]),
     # arrangement
-    ("get_arrangement", {}, [("arrangement.get_overview", {"include_clips": True})]),
+    ("get_arrangement", {}, [("arrangement.get_overview", {"include_clips": True, "include_note_counts": False})]),
     ("add_clip_to_arrangement", {"track": 2, "slot": 0, "time": 16.0},
      [("arrangement.add_clip_from_slot", {"track": 2, "slot": 0, "time": 16.0, "delete_source": False})]),
     ("set_locator", {"time": 64.0, "name": "Drop"}, [("arrangement.set_locator", {"time": 64.0, "name": "Drop"})]),
@@ -104,8 +104,19 @@ SPEC_TOOL_NAMES = {
     "get_automation", "set_automation", "clear_automation",
     "get_selection", "select", "show_view",
 }
-READ_TOOLS = {n for n in SPEC_TOOL_NAMES if n.startswith("get_") or n in {"ableton_status", "ableton_describe_api", "browse"}}
-DESTRUCTIVE_TOOLS = {"delete_track", "delete_scene", "delete_clip", "delete_device", "clear_automation"}
+READ_TOOLS = {n for n in SPEC_TOOL_NAMES if n.startswith("get_") or n in {"ableton_status", "browse"}}
+# destructiveHint=true (TOOLS.md): the deletes, plus the tools that erase notes/locators.
+DESTRUCTIVE_TOOLS = {
+    "delete_track", "delete_scene", "delete_clip", "delete_device", "clear_automation",
+    "replace_notes", "remove_notes", "delete_locator",
+}
+# Tools whose schema carries confirm (destructive always, or conditionally destructive).
+CONFIRM_TOOLS = {
+    "delete_track", "delete_scene", "delete_clip", "delete_device", "clear_automation",
+    "remove_notes", "add_clip_to_arrangement",
+}
+# Mutating tools that take no `why`: undo/redo are not narrative actions, describe_api has no parameters.
+NO_WHY_TOOLS = {"undo", "redo", "get_history", "ableton_describe_api"}
 
 
 def test_spec_has_55_tools() -> None:
@@ -139,10 +150,39 @@ async def test_tool_metadata(client) -> None:
             assert ann.idempotentHint is False, tool.name
             assert ann.destructiveHint is (tool.name in DESTRUCTIVE_TOOLS), tool.name
         props = tool.inputSchema.get("properties", {})
-        if tool.name not in READ_TOOLS and tool.name not in {"undo", "redo", "get_history"}:
+        if tool.name not in READ_TOOLS and tool.name not in NO_WHY_TOOLS:
             assert "why" in props, f"{tool.name} must accept why"
-        if tool.name in DESTRUCTIVE_TOOLS:
-            assert "confirm" in props, tool.name
+        assert ("confirm" in props) is (tool.name in CONFIRM_TOOLS), tool.name
+
+
+async def test_describe_api_has_no_parameters_and_is_not_read_only(client, fake_script) -> None:
+    tool = next(t for t in (await client.list_tools()).tools if t.name == "ableton_describe_api")
+    assert tool.inputSchema.get("properties", {}) == {}
+    assert tool.annotations.readOnlyHint is False and tool.annotations.destructiveHint is False
+    assert "~/.claude-live/api/" in tool.description
+    res = await client.call_tool("ableton_describe_api", {})
+    assert res.isError is False
+    assert fake_script.calls == [("sys.describe_api", {})]
+    assert res.structuredContent["path"].endswith("/.claude-live/api/live_api_12.1.5.md")
+    # A model-supplied path is not a parameter any more: it is dropped and never reaches Live.
+    res = await client.call_tool("ableton_describe_api", {"path": "/tmp/x.md"})
+    assert res.isError is False
+    assert fake_script.calls == [("sys.describe_api", {}), ("sys.describe_api", {})]
+
+
+async def test_set_transport_has_no_record_controls(client, fake_script) -> None:
+    tool = next(t for t in (await client.list_tools()).tools if t.name == "set_transport")
+    props = set(tool.inputSchema.get("properties", {}))
+    assert props == {"tempo", "metronome", "loop_enabled", "loop_start", "loop_length", "position",
+                     "signature_numerator", "signature_denominator", "why"}
+    res = await client.call_tool("set_transport", {"record_mode": True})
+    assert res.isError is True
+    assert fake_script.requests == []
+
+
+async def test_undo_mentions_the_users_edits(client) -> None:
+    tool = next(t for t in (await client.list_tools()).tools if t.name == "undo")
+    assert "Also undoes the user's own most recent edits, one step each" in tool.description
 
 
 @pytest.mark.parametrize(("tool", "args", "expected"), CASES, ids=[c[0] for c in CASES])
@@ -190,6 +230,87 @@ async def test_undo_steps_validated(client, fake_script) -> None:
     assert fake_script.requests == []
     res = await client.call_tool("redo", {"steps": 2})
     assert res.structuredContent == {"ok": True, "steps": 2}
+
+
+async def test_delete_track_track_type(client, fake_script) -> None:
+    res = await client.call_tool("delete_track", {"track": 1, "track_type": "return", "confirm": True})
+    assert res.isError is False, res.content[0].text
+    assert fake_script.calls == [("song.delete_track", {"track": 1, "track_type": "return", "confirm": True})]
+    assert res.structuredContent == {"deleted": "B-Return", "track_type": "return", "track_count": 3}
+    fake_script.requests.clear()
+    res = await client.call_tool("delete_track", {"track": 0, "track_type": "master", "confirm": True})
+    assert res.isError is True and 'INVALID_PARAMS: delete_track track_type must be "track" or "return"' in res.content[0].text
+    res = await client.call_tool("delete_track", {"track": 1, "track_type": "return"})
+    assert res.isError is True and "CONFIRM_REQUIRED: delete_track would delete return track 1" in res.content[0].text
+    assert fake_script.requests == []
+
+
+async def test_set_scene_clear_tempo_sends_null(client, fake_script) -> None:
+    res = await client.call_tool("set_scene", {"scene": 1, "clear_tempo": True, "why": "back to the set tempo"})
+    assert res.isError is False, res.content[0].text
+    assert fake_script.requests[0]["params"] == {"scene": 1, "tempo": None}
+    assert "tempo" in fake_script.requests[0]["params"]  # an explicit null, not an omitted key
+    assert res.structuredContent["tempo"] is None
+    fake_script.requests.clear()
+    res = await client.call_tool("set_scene", {"scene": 1, "tempo": 128.0, "clear_tempo": True})
+    assert res.isError is True and "INVALID_PARAMS: set_scene takes either tempo or clear_tempo" in res.content[0].text
+    res = await client.call_tool("set_scene", {"scene": 1})
+    assert res.isError is True and "INVALID_PARAMS" in res.content[0].text
+    assert fake_script.requests == []
+
+
+async def test_remove_notes_without_selector_requires_confirm(client, fake_script) -> None:
+    res = await client.call_tool("remove_notes", {"track": 2, "slot": 0})
+    assert res.isError is True
+    text = res.content[0].text
+    assert "CONFIRM_REQUIRED: this removes every note in the clip" in text
+    assert "use replace_notes with [] for an intentional rewrite" in text
+    assert "call again with confirm=True" in text
+    assert fake_script.requests == []  # refused locally
+    res = await client.call_tool("remove_notes", {"track": 2, "slot": 0, "note_ids": []})
+    assert res.isError is True and "INVALID_PARAMS: note_ids must not be empty" in res.content[0].text
+    assert fake_script.requests == []
+    res = await client.call_tool("remove_notes", {"track": 2, "slot": 0, "confirm": True, "why": "wipe the clip"})
+    assert res.isError is False, res.content[0].text
+    assert fake_script.calls == [("notes.remove", {"track": 2, "slot": 0, "confirm": True})]
+    assert res.structuredContent == {"removed": 16, "note_count": 0}
+    fake_script.requests.clear()
+    # a window never needs confirm, and confirm is not forwarded with one
+    res = await client.call_tool("remove_notes", {"track": 2, "slot": 0, "from_pitch": 36, "pitch_span": 1, "confirm": True})
+    assert res.isError is False
+    assert fake_script.calls == [("notes.remove", {"track": 2, "slot": 0, "from_pitch": 36, "pitch_span": 1})]
+
+
+async def test_add_clip_to_arrangement_delete_source_requires_confirm(client, fake_script) -> None:
+    res = await client.call_tool("add_clip_to_arrangement", {"track": 2, "slot": 0, "time": 16.0, "delete_source": True})
+    assert res.isError is True
+    assert "CONFIRM_REQUIRED: add_clip_to_arrangement would delete the session clip in track 2 slot 0" in res.content[0].text
+    assert fake_script.requests == []
+    res = await client.call_tool("add_clip_to_arrangement", {"track": 2, "slot": 0, "time": 16.0, "delete_source": True, "confirm": True})
+    assert res.isError is False, res.content[0].text
+    assert fake_script.calls == [("arrangement.add_clip_from_slot", {"track": 2, "slot": 0, "time": 16.0, "delete_source": True, "confirm": True})]
+    fake_script.requests.clear()
+    res = await client.call_tool("add_clip_to_arrangement", {"track": 2, "slot": 0, "time": 16.0, "confirm": True})
+    assert res.isError is False
+    assert fake_script.calls == [("arrangement.add_clip_from_slot", {"track": 2, "slot": 0, "time": 16.0, "delete_source": False})]
+
+
+async def test_include_note_counts_is_forwarded(client, fake_script) -> None:
+    await client.call_tool("get_session", {"include_note_counts": True, "include_clips": False})
+    await client.call_tool("get_track", {"track": 2, "include_note_counts": True})
+    await client.call_tool("get_arrangement", {"include_note_counts": True})
+    assert [p["include_note_counts"] for _, p in fake_script.calls] == [True, True, True]
+    assert [m for m, _ in fake_script.calls] == ["song.get_overview", "track.get", "arrangement.get_overview"]
+
+
+async def test_locator_tools_say_stop_first(client) -> None:
+    tools = {t.name: t for t in (await client.list_tools()).tools}
+    assert "Fails while playing; stop first." in tools["set_locator"].description
+    assert "Fails while playing; stop first." in tools["delete_locator"].description
+    assert tools["delete_locator"].annotations.destructiveHint is True
+    assert tools["replace_notes"].annotations.destructiveHint is True
+    assert "Replaces every note in the clip (undoable)" in tools["replace_notes"].description
+    assert tools["clear_automation"].annotations.destructiveHint is True
 
 
 async def test_clear_automation_all_requires_confirm(client, fake_script) -> None:

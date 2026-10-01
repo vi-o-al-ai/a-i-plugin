@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from ableton_live_mcp.client import LONG_TIMEOUT, MUTATION_TIMEOUT, READ_TIMEOUT, LiveClient, timeout_for
+from ableton_live_mcp.client import LONG_TIMEOUT, MUTATION_TIMEOUT, READ_TIMEOUT, RETRY_ATTEMPTS, LiveClient, is_retryable, timeout_for
 from ableton_live_mcp.errors import CONNECTION_HINT, TIMEOUT_HINT, LiveError
 
 from .conftest import free_port
@@ -61,7 +61,7 @@ async def test_connection_refused_wording() -> None:
     assert err.name == "CONNECTION"
     assert err.text.startswith("CONNECTION: Could not connect to Live at 127.0.0.1:")
     assert "Live is not running, or the ClaudeLive control surface is not selected" in err.text
-    assert "Preferences → Link, Tempo & MIDI → Control Surface" in err.text
+    assert "Settings → Link, Tempo & MIDI → Control Surface (called Preferences in older Live versions)" in err.text
     assert CONNECTION_HINT in err.text
     assert not client.connected
 
@@ -175,3 +175,58 @@ async def test_wire_framing(fake_script) -> None:
     assert seen[0].endswith(b"\n") and seen[0].count(b"\n") == 1
     assert b": " not in seen[0] and b", " not in seen[0]
     assert json.loads(seen[0]) == {"jsonrpc": "2.0", "id": 1, "method": "clip.get", "params": {"track": 2, "slot": 0}}
+
+
+def test_is_retryable() -> None:
+    assert is_retryable(LiveError(-32006, "budget", {"retry": True, "nodes_visited": 5}))
+    assert not is_retryable(LiveError(-32006, "budget", {"retry": False}))
+    assert not is_retryable(LiveError(-32006, "budget", None))
+    assert not is_retryable(LiveError(-32000, "missing", {"retry": True}))
+    assert not is_retryable(LiveError("TIMEOUT", "local timeout", {"retry": True}))
+
+
+async def test_call_retrying_succeeds_on_third_attempt(fake_script) -> None:
+    client = LiveClient("127.0.0.1", fake_script.port)
+    client.retry_delay = 0.0
+    fake_script.retry_timeouts["browser.load"] = 2
+    try:
+        result = await client.call_retrying("browser.load", {"uri": "query:AudioFx#Reverb", "track": 2})
+        assert result["loaded"]["name"] == "Reverb"
+        assert [r["method"] for r in fake_script.requests] == ["browser.load"] * 3
+        assert len({json.dumps(r["params"], sort_keys=True) for r in fake_script.requests}) == 1  # the same call
+        assert fake_script.connections == 1  # an application error keeps the connection
+    finally:
+        await client.close()
+
+
+async def test_call_retrying_gives_up_after_ten_attempts(fake_script) -> None:
+    assert RETRY_ATTEMPTS == 10
+    client = LiveClient("127.0.0.1", fake_script.port)
+    client.retry_delay = 0.0
+    fake_script.retry_timeouts["browser.list"] = 50
+    try:
+        with pytest.raises(LiveError) as info:
+            await client.call_retrying("browser.list", {"uri": "query:Synths"})
+        assert info.value.code == -32006 and info.value.data == {"retry": True, "nodes_visited": 1234}
+        assert "still indexing the browser" in info.value.text
+        assert len(fake_script.requests_for("browser.list")) == 10
+        assert fake_script.retry_timeouts["browser.list"] == 40
+    finally:
+        await client.close()
+
+
+async def test_call_retrying_does_not_retry_other_errors(fake_script) -> None:
+    client = LiveClient("127.0.0.1", fake_script.port)
+    client.retry_delay = 0.0
+    fake_script.errors["browser.list"] = (-32006, "no retry flag", {"retry": False})
+    try:
+        with pytest.raises(LiveError):
+            await client.call_retrying("browser.list", {"uri": "x"})
+        assert len(fake_script.requests) == 1
+        fake_script.errors.clear()
+        with pytest.raises(LiveError) as info:
+            await client.call_retrying("track.get", {"track": 9})
+        assert info.value.name == "NOT_FOUND"
+        assert len(fake_script.requests) == 2
+    finally:
+        await client.close()

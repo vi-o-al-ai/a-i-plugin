@@ -51,6 +51,11 @@ from mcp.client.session import ClientSession  # noqa: E402
 from mcp.client.stdio import StdioServerParameters, stdio_client  # noqa: E402
 from mcp.types import TextContent  # noqa: E402
 
+# The Remote Script runs in this process and writes its API dump under ``~/.claude-live/api/``
+# (PROTOCOL.md sys.describe_api), so the suite points HOME at a temporary directory for its
+# duration. The server subprocess gets the real HOME back (uv's cache lives there).
+ORIGINAL_HOME = os.environ.get("HOME")
+
 TICK_PERIOD_S = 0.01  # the background "Live main thread" ticks every ~10 ms
 READY_TIMEOUT_S = 10.0
 INIT_TIMEOUT_S = 90.0  # uv may have to build the venv on a cold CI runner
@@ -115,14 +120,16 @@ def ping_over_tcp(port, timeout=READY_TIMEOUT_S):
 
 
 class RemoteScript(object):
-    """The running control surface, its port and the thread that plays Live's main thread."""
+    """The running control surface, its port, the thread that plays Live's main thread, and
+    the temporary HOME the script sees (``home / ".claude-live" / "api"`` receives API dumps)."""
 
-    def __init__(self, surface, c_instance, thread, stop_event, tick_errors):
+    def __init__(self, surface, c_instance, thread, stop_event, tick_errors, home):
         self.surface = surface
         self.c_instance = c_instance
         self.thread = thread
         self._stop = stop_event
         self.tick_errors = tick_errors
+        self.home = home
 
     @property
     def port(self):
@@ -138,7 +145,19 @@ class RemoteScript(object):
 
 
 @pytest.fixture(scope="module")
-def remote_script(live_set, tmp_path_factory):
+def script_home(tmp_path_factory):
+    """A temporary HOME for the in-process Remote Script (restored afterwards)."""
+    home = tmp_path_factory.mktemp("script-home")
+    mp = pytest.MonkeyPatch()
+    mp.setenv("HOME", str(home))
+    try:
+        yield home
+    finally:
+        mp.undo()
+
+
+@pytest.fixture(scope="module")
+def remote_script(live_set, script_home, tmp_path_factory):
     log_dir = tmp_path_factory.mktemp("remote-script")
     cfg = _script_config(log_dir / "ClaudeLive.log")
     c_instance = factory.FakeCInstance(live_set.song)
@@ -163,7 +182,7 @@ def remote_script(live_set, tmp_path_factory):
     # Designate the tick thread before it starts so the guard covers its very first tick.
     _core.set_main_thread(thread)
     thread.start()
-    script = RemoteScript(surface, c_instance, thread, stop, tick_errors)
+    script = RemoteScript(surface, c_instance, thread, stop, tick_errors, script_home)
     try:
         pong = ping_over_tcp(script.port)
         assert pong.get("result", {}).get("protocol_version") == 1, pong
@@ -187,7 +206,7 @@ class McpSession(object):
     def __init__(self, loop, session, home, port, stderr_path):
         self.loop = loop
         self.session = session
-        self.home = home
+        self.home = home.resolve()  # the server resolves CLAUDE_LIVE_HOME before using it
         self.port = port
         self.stderr_path = stderr_path
 
@@ -229,15 +248,20 @@ def mcp_session(remote_script, tmp_path_factory):
         pytest.skip("uv is required to launch the ableton-live-mcp server subprocess")
     home = tmp_path_factory.mktemp("claude-live-home")
     stderr_path = home / "server.stderr.log"
+    env = {
+        **os.environ,
+        "CLAUDE_LIVE_PORT": str(remote_script.port),
+        "CLAUDE_LIVE_HOME": str(home),
+        "CLAUDE_LIVE_LOG_LEVEL": "DEBUG",
+    }
+    if ORIGINAL_HOME is not None:
+        env["HOME"] = ORIGINAL_HOME  # the script_home redirect is for the in-process script only
+    else:
+        env.pop("HOME", None)
     params = StdioServerParameters(
         command="uv",
         args=["run", "--frozen", "--directory", str(SERVER_DIR), "ableton-live-mcp"],
-        env={
-            **os.environ,
-            "CLAUDE_LIVE_PORT": str(remote_script.port),
-            "CLAUDE_LIVE_HOME": str(home),
-            "CLAUDE_LIVE_LOG_LEVEL": "DEBUG",
-        },
+        env=env,
     )
 
     loop = asyncio.new_event_loop()

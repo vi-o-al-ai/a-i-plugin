@@ -48,9 +48,9 @@ CODE_NAMES: dict[int, str] = {
 
 # PROTOCOL.md section 8 wording.
 CONNECTION_HINT = (
-    "Live is not running, or the ClaudeLive control surface is not selected "
-    "(Preferences → Link, Tempo & MIDI → Control Surface), or the port does not match "
-    "(CLAUDE_LIVE_PORT on the server vs config.json in the Remote Script)."
+    "Live is not running, or the ClaudeLive control surface is not selected in "
+    "Settings → Link, Tempo & MIDI → Control Surface (called Preferences in older Live versions), "
+    "or the port does not match (CLAUDE_LIVE_PORT on the server vs config.json in the Remote Script)."
 )
 TIMEOUT_HINT = "Live is not responding. It may be showing a modal dialog, loading a set, or frozen."
 
@@ -69,7 +69,9 @@ HINTS: dict[str, str] = {
 }
 
 # The script's own -32006 is a traversal budget, not a frozen Live; give it a different hint.
-_SCRIPT_TIMEOUT_HINT = "Narrow the search (fewer categories, a smaller max_nodes) and try again."
+_SCRIPT_TIMEOUT_HINT = (
+    "The script is still indexing the browser; the server retries automatically. If you see this, call again."
+)
 
 
 def code_name(code: int | str) -> str:

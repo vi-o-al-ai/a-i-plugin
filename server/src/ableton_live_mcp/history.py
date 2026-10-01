@@ -10,13 +10,21 @@ from __future__ import annotations
 import json
 import logging
 import os
+from collections import deque
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from .config import make_private_dir
+
 log = logging.getLogger("ableton_live_mcp.history")
 
 MUTATING_FLAGS = frozenset({"M", "D", "UI"})
+
+# TOOLS.md "Action history": names from the set are untrusted text; cap what is stored in
+# ``resolved`` and ``result_summary`` (the files keep every entry, memory keeps the last 2000).
+MAX_NAME_LENGTH = 200
+MAX_ENTRIES_IN_MEMORY = 2000
 
 TRACK_RESULT_TOOLS = frozenset({"get_track", "set_track", "create_midi_track", "create_audio_track", "create_return_track"})
 SCENE_RESULT_TOOLS = frozenset({"create_scene", "set_scene", "fire_scene", "duplicate_scene"})
@@ -55,6 +63,24 @@ def _is_scalar(value: Any) -> bool:
     return value is None or isinstance(value, (str, int, float, bool))
 
 
+def clip_name(value: Any) -> Any:
+    """Truncate a name from the set to ``MAX_NAME_LENGTH`` characters (marker ``…``)."""
+    if isinstance(value, str) and len(value) > MAX_NAME_LENGTH:
+        return value[: MAX_NAME_LENGTH - 1] + "…"
+    return value
+
+
+def _truncate_strings(value: Any) -> Any:
+    """Apply ``clip_name`` to every string (keys included) inside a summary."""
+    if isinstance(value, str):
+        return clip_name(value)
+    if isinstance(value, dict):
+        return {clip_name(k) if isinstance(k, str) else k: _truncate_strings(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_truncate_strings(v) for v in value]
+    return value
+
+
 def _fmt(value: Any) -> str:
     if isinstance(value, float):
         return f"{value:g}"
@@ -88,7 +114,7 @@ class NameCache:
             return
         tt = d.get("track_type") or track_type or "track"
         index = d.get("index")
-        self.tracks[(tt, index)] = d["name"]
+        self.tracks[(tt, index)] = clip_name(d["name"])
         for clip in d.get("clips") or []:
             self._learn_clip(clip)
         for dev in d.get("devices") or []:
@@ -97,19 +123,19 @@ class NameCache:
     def _learn_clip(self, d: Any) -> None:
         if not isinstance(d, dict) or not d.get("name") or d.get("track") is None:
             return
-        self.clips[(d["track"], d.get("slot"), d.get("arrangement_index"))] = d["name"]
+        self.clips[(d["track"], d.get("slot"), d.get("arrangement_index"))] = clip_name(d["name"])
 
     def _learn_device(self, track_type: str, track: int | None, d: Any) -> None:
         if not isinstance(d, dict) or not d.get("name") or d.get("path") is None:
             return
-        self.devices[(track_type, track, str(d["path"]))] = d["name"]
+        self.devices[(track_type, track, str(d["path"]))] = clip_name(d["name"])
         for chain in d.get("chains") or []:
             for sub in (chain or {}).get("devices") or []:
                 self._learn_device(track_type, track, sub)
 
     def _learn_scene(self, d: Any) -> None:
         if isinstance(d, dict) and d.get("name") and d.get("index") is not None:
-            self.scenes[d["index"]] = d["name"]
+            self.scenes[d["index"]] = clip_name(d["name"])
 
     def _forget_track_tree(self) -> None:
         self.tracks.clear()
@@ -170,7 +196,7 @@ class NameCache:
         elif tool == "get_arrangement":
             for t in result.get("tracks") or []:
                 if isinstance(t, dict) and t.get("name") and t.get("index") is not None:
-                    self.tracks[("track", t["index"])] = t["name"]
+                    self.tracks[("track", t["index"])] = clip_name(t["name"])
                 for clip in (t or {}).get("clips") or []:
                     self._learn_clip(clip)
         elif tool in ("get_selection", "select"):
@@ -181,14 +207,14 @@ class NameCache:
             return
         t = sel.get("track")
         if isinstance(t, dict) and t.get("name"):
-            self.tracks[(t.get("track_type") or "track", t.get("index"))] = t["name"]
+            self.tracks[(t.get("track_type") or "track", t.get("index"))] = clip_name(t["name"])
         self._learn_scene(sel.get("scene"))
         slot = sel.get("clip_slot")
         if isinstance(slot, dict) and slot.get("clip_name") and slot.get("track") is not None:
-            self.clips[(slot["track"], slot.get("slot"), None)] = slot["clip_name"]
+            self.clips[(slot["track"], slot.get("slot"), None)] = clip_name(slot["clip_name"])
         dev = sel.get("device")
         if isinstance(t, dict) and isinstance(dev, dict) and dev.get("name") and dev.get("path") is not None:
-            self.devices[(t.get("track_type") or "track", t.get("index"), str(dev["path"]))] = dev["name"]
+            self.devices[(t.get("track_type") or "track", t.get("index"), str(dev["path"]))] = clip_name(dev["name"])
 
     # -- lookup ---------------------------------------------------------------------
 
@@ -264,7 +290,7 @@ def names_from_result(tool: str, params: dict[str, Any], result: Any) -> dict[st
         out["scene_name"] = (result.get("scene") or {}).get("name")
         out["device_name"] = (result.get("device") or {}).get("name")
         out["clip_name"] = (result.get("clip_slot") or {}).get("clip_name")
-    return {k: v for k, v in out.items() if v}
+    return {k: _truncate_strings(v) for k, v in out.items() if v}
 
 
 def _changed(params: dict[str, Any], result: Any, display_keys: tuple[str, ...] = ()) -> dict[str, Any]:
@@ -281,7 +307,12 @@ def _changed(params: dict[str, Any], result: Any, display_keys: tuple[str, ...] 
 
 
 def summarize_result(tool: str, params: dict[str, Any], result: Any) -> dict[str, Any] | None:
-    """Compact ``result_summary`` for the JSONL entry."""
+    """Compact ``result_summary`` for the JSONL entry (strings capped at ``MAX_NAME_LENGTH``)."""
+    summary = _summarize_result(tool, params, result)
+    return _truncate_strings(summary) if summary is not None else None
+
+
+def _summarize_result(tool: str, params: dict[str, Any], result: Any) -> dict[str, Any] | None:
     if not isinstance(result, dict):
         return None
     r = result
@@ -333,7 +364,12 @@ def summarize_result(tool: str, params: dict[str, Any], result: Any) -> dict[str
         loaded = r.get("loaded") or {}
         return {"loaded": loaded.get("name"), "path": loaded.get("path"), "device_count": len(r.get("devices") or [])}
     if tool == "browse":
-        return {"count": len(r.get("items") or []), "truncated": r.get("truncated", False)}
+        out = {"count": len(r.get("items") or []), "truncated": r.get("truncated", False)}
+        if r.get("calls") is not None:
+            out["calls"] = r["calls"]
+        return out
+    if tool == "ableton_describe_api":
+        return {"path": r.get("path"), "classes": r.get("classes"), "bytes": r.get("bytes")}
     if tool == "get_session":
         return {
             "tracks": len(r.get("tracks") or []),
@@ -368,6 +404,8 @@ def target_path(tool: str, params: dict[str, Any], resolved: dict[str, Any]) -> 
         return "scale"
     if tool in ("undo", "redo"):
         return "song"
+    if tool == "ableton_describe_api":
+        return "Live API"
     if tool == "show_view":
         return str(params.get("view", "view"))
     if tool in ("set_locator", "delete_locator"):
@@ -486,6 +524,8 @@ def summary_text(tool: str, params: dict[str, Any], summary: dict[str, Any] | No
         return "selected"
     if tool == "show_view":
         return "shown"
+    if tool == "ableton_describe_api":
+        return f"dumped {s.get('classes')} classes to {s.get('path')}"
     if s:
         return ", ".join(f"{k}={_fmt(v)}" for k, v in list(s.items())[:4])
     return "ok"
@@ -506,7 +546,7 @@ class ActionHistory:
         stamp = self.started_at.strftime("%Y-%m-%d_%H%M%S")
         self.jsonl_path = self.dir / f"{stamp}_{self.pid}.jsonl"
         self.md_path = self.dir / f"{stamp}_{self.pid}.md"
-        self.entries: list[dict[str, Any]] = []
+        self.entries: deque[dict[str, Any]] = deque(maxlen=MAX_ENTRIES_IN_MEMORY)
         self.names = NameCache()
         self._seq = 0
         self._files_ready = False
@@ -600,12 +640,14 @@ class ActionHistory:
     def _ensure_files(self) -> None:
         if self._files_ready:
             return
-        self.dir.mkdir(parents=True, exist_ok=True)
+        make_private_dir(self.dir)  # TOOLS.md: the history directory is 0700
         if not self.jsonl_path.exists():
-            self.jsonl_path.touch()
+            self.jsonl_path.touch(mode=0o600)
         if not self.md_path.exists():
             header = self.started_at.strftime("# ClaudeLive session %Y-%m-%d %H:%M:%S")
-            self.md_path.write_text(header + "\n\n", encoding="utf-8")
+            fd = os.open(self.md_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(header + "\n\n")
         self._files_ready = True
         log.info("history: %s", self.jsonl_path)
 
@@ -621,13 +663,13 @@ class ActionHistory:
     # -- querying -------------------------------------------------------------------
 
     def get(self, limit: int = 50, include_reads: bool = False) -> dict[str, Any]:
-        """Entries for ``get_history``: most recent last."""
-        entries = self.entries if include_reads else [e for e in self.entries if MUTATING_FLAGS & set(e["flags"])]
+        """Entries for ``get_history``: most recent last (from the last 2000 kept in memory)."""
+        entries = list(self.entries) if include_reads else [e for e in self.entries if MUTATING_FLAGS & set(e["flags"])]
         limit = max(1, int(limit)) if limit else len(entries)
         return {
             "entries": entries[-limit:],
             "count": len(entries),
-            "total": len(self.entries),
+            "total": self._seq,
             "history_jsonl": str(self.jsonl_path),
             "history_md": str(self.md_path),
             "files_created": self._files_ready,
