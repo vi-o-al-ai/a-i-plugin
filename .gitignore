@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+dist/
+build/
+
+# uv
+server/.venv/
+
+# OS
+.DS_Store
+
+# Local plugin test artifacts
+*.log
+live_api_dump.md
